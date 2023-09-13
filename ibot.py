@@ -9,9 +9,6 @@ from nextcord.ext import commands
 Discord_Forum_Name = os.getenv("Discord_Forum_Name")
 Bot_Token = os.getenv("Discord_Bot_Token")
 
-print Discord_Forum_Name
-print Bot_Token
-
 # Set up logging to console and file
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(message)s',
@@ -73,7 +70,6 @@ async def on_thread_create(thread):
             await thread.send(message_part)
 
 # Run the bot
-
 if Bot_Token is None:
     print("Bot_Token is not set properly.")
 else:
