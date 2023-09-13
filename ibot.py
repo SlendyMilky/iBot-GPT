@@ -25,7 +25,7 @@ bot = commands.Bot(command_prefix="!")
 @bot.event
 async def on_ready():
     print(f"We have logged in as {bot.user}")
-    await bot.change_presence(activity=nextcord.Game(name="t'aider dans" % Discord_Forum_Name))
+    await bot.change_presence(activity=nextcord.Game(name="t'aider dans %s" % Discord_Forum_Name))
 
 @bot.event
 async def on_thread_create(thread):
