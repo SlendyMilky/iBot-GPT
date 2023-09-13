@@ -6,18 +6,18 @@ import datetime
 import os
 from nextcord.ext import commands
 
-Discord_Forum_Name = os.environ["Discord_Forum_Name"]
-Bot_Token = os.environ["Discord_Bot_Token"]
+Discord_Forum_Name = os.getenv("Discord_Forum_Name")
+Bot_Token = os.getenv("Discord_Bot_Token")
 
 # Set up logging to console and file
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(message)s',
                     datefmt='%m/%d/%Y %I:%M:%S %p',
-                    handlers=(logging.StreamHandler(),
-                              logging.FileHandler()"thread_log.txt")])
+                    handlers=[logging.StreamHandler(),
+                              logging.FileHandler("thread_log.txt")])
 
 # Configure OpenAI API
-openai.api_key = os.environ["GPT_KEY"]
+openai.api_key = os.getenv("GPT_KEY")
 
 # Create a new bot
 bot = commands.Bot(command_prefix="!")
@@ -70,6 +70,7 @@ async def on_thread_create(thread):
             await thread.send(message_part)
 
 # Run the bot
+
 if Bot_Token is None:
     print("Bot_Token is not set properly.")
 else:
