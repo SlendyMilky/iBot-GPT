@@ -9,6 +9,9 @@ from nextcord.ext import commands
 Discord_Forum_Name = os.getenv("Discord_Forum_Name")
 Bot_Token = os.getenv("Discord_Bot_Token")
 
+print Discord_Forum_Name
+print Bot_Token
+
 # Set up logging to console and file
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(message)s',
