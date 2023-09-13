@@ -1,12 +1,15 @@
 FROM python:alpine3.18
 
-ENV Discord_Forum_Name = **None** \
-    Discord_Bot_Token = **None** \
-    GPT_KEY = **None**
+ENV VIRTUAL_ENV=/opt/venv
+RUN python3 -m venv $VIRTUAL_ENV
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
+# Install dependencies:
 RUN mkdir /iBot
 WORKDIR /iBot
 ADD . /iBot/
+RUN pip install -U python-dotenv
 RUN pip install -r requirements.txt
 
-CMD ["python", "/iBot/ibot.py"]`
+# Run the application:
+CMD ["python3", "/iBot/ibot.py"]`
