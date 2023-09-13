@@ -1,13 +1,18 @@
-build-and-publish-latest:
+name: Docker Image CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build_and_publish:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/master' # Running this job only for master branch
-
     steps:
-        - uses: actions/checkout@v2 # Checking out the repo
-
-        - name: Build and Publish latest Docker image
-          uses: VaultVulp/gp-docker-action@1.1.12
-          with:
-              github-token: ${{ secrets.TOKEN }}
-              image-name: ibot-gpt # Provide only Docker image name, tag will be automatically set to latest
-              dockerfile: Dockerfile
+    - uses: actions/checkout@v3
+    - name: Build the Docker image and push it
+      run: 
+        docker login --username slendymilky --password ${{ secrets.TOKEN }} ghrc.io
+        docker build . --file Dockerfile --tag ghcr.io/slendymilky/ibot-gpt:latest
+        docker push ghcr.io/slendymilky/ibot-gpt:latest
