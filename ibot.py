@@ -6,7 +6,7 @@ import datetime
 import os
 from nextcord.ext import commands
 
-Discord_Forum_ID = os.environ['Discord_Forum_ID']
+Discord_Forum_Name = os.environ['Discord_Forum_Name']
 Bot_Token = os.environ['Discord_Bot_Token']
 
 # Set up logging to console and file
@@ -25,11 +25,11 @@ bot = commands.Bot(command_prefix="!")
 @bot.event
 async def on_ready():
     print(f"We have logged in as {bot.user}")
-    await bot.change_presence(activity=nextcord.Game(name="t'aider dans" % Discord_Forum_ID))
+    await bot.change_presence(activity=nextcord.Game(name="t'aider dans" % Discord_Forum_Name))
 
 @bot.event
 async def on_thread_create(thread):
-    if thread.parent.name == os.environ['Discord_Forum_ID']:
+    if thread.parent.name == os.environ['Discord_Forum_Name']:
 
         # Fetch the base message in the thread
         base_message = await thread.fetch_message(thread.id)
