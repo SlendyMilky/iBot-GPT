@@ -70,4 +70,8 @@ async def on_thread_create(thread):
             await thread.send(message_part)
 
 # Run the bot
-bot.run(Bot_Token)
+
+if Bot_Token is None:
+    print("Bot_Token is not set properly.")
+else:
+    bot.run(Bot_Token)
