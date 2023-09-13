@@ -13,7 +13,7 @@ Bot_Token = os.environ["Discord_Bot_Token"]
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(message)s',
                     datefmt='%m/%d/%Y %I:%M:%S %p',
-                    handlers=[logging.StreamHandler(),
+                    handlers=(logging.StreamHandler(),
                               logging.FileHandler()"thread_log.txt")])
 
 # Configure OpenAI API
