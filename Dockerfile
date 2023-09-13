@@ -1,4 +1,4 @@
-FROM python:latest
+FROM python:alpine3.18
 
 RUN mkdir /iBot
 WORKDIR /iBot
