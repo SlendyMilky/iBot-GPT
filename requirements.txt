@@ -1,5 +1,4 @@
 openai
 nextcord
-textwrap
 logging
 datetime
