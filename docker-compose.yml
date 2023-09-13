@@ -1,0 +1,8 @@
+version: '3.9'
+services:
+    ibot-gpt:
+        image: 'slendymilky/ibot-gpt:latest'
+        container-name: ibot-gpt
+        restart: always
+        environment:
+            - stack.env
