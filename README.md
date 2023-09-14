@@ -36,7 +36,7 @@ version: '3.9'
             container_name: ibot-gpt
             restart: always
             environment:
-            - stack.env
+                - stack.env
 ```
 
 Pour démarrer le bot avec Docker, exécutez la commande suivante :
