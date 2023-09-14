@@ -2,9 +2,9 @@ name: Build and Push Docker Image
 
 on:
   push:
-    branches: [ main ]
+    branches: [ dev ]
   pull_request:
-    branches: [ main ]
+    branches: [ dev ]
 
 jobs:
   build:
@@ -26,18 +26,18 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and Push Docker Image Latest
+      - name: Build and Push Docker Image
         uses: docker/build-push-action@v5
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/ibot-gpt:latest
-      
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/ibot-gpt:dev
+
       - name: Build and Push Docker Image Version
         uses: docker/build-push-action@v5
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/ibot-gpt:v1.0
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/ibot-gpt:dev-v1.0
