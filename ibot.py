@@ -18,6 +18,7 @@ logging.basicConfig(level=logging.INFO,
 
 # Configure OpenAI API
 openai.api_key = os.environ['GPT_KEY']
+openai.model = os.environ['GPT_MODEL']
 
 # Create a new bot
 bot = commands.Bot(command_prefix="!")
@@ -43,7 +44,7 @@ async def on_thread_create(thread):
         async with thread.typing():
             # Send the base content to GPT-3.5 Turbo and generate the response
             response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
+                model=openai.model,
                 messages=[
                     {
                         "role": "system",
