@@ -9,7 +9,7 @@ from nextcord.ext import commands
 Discord_Forum_Name = os.getenv('Discord_Forum_Name')
 Bot_Token = os.getenv('Discord_Bot_Token')
 
-openai.api_key = os.getenv('GPT_KEY')
+openai.api_key = os.getenv('OPENAI_API_KEY')
 openai.model = os.getenv('GPT_MODEL')
 
 logging.basicConfig(level=logging.INFO,
