@@ -64,5 +64,25 @@ async def on_thread_create(thread):
             embed.set_footer(text=f"Réponse générée par {openai.model} le {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
             await thread.send(embed=embed)
 
-bot.run(Bot_Token)
+@bot.slash_command(name="ask-gpt", description="Demander une réponse de chatgpt")
+async def ask_gpt(ctx, message: str):
+    await ctx.response.defer()  # The response will be visible to everyone
+    response = openai.ChatCompletion.create(
+        model=openai.model,
+        messages=[
+            {"role": "system", "content": f"Date du jour : {datetime.datetime.now()}"},
+            {"role": "system", "content": "Si la question posée te semble incorrecte ou manque de détails, n'hésite pas à demander à l'utilisateur des informations supplémentaires. Étant donné que tu as uniquement accès à son message initial, avoir le maximum d'informations sera utile pour fournir une aide optimale."},
+            {"role": "system", "content": "Tu es un expert en informatique nommé iBot-GPT. Si tu reçois une question qui ne concerne pas ce domaine, n'hésite pas à rappeler à l'utilisateur que ce serveur est axé sur l'informatique, et non sur le sujet évoqué. Assure-toi toujours de t'adresser en tutoyant l'utilisateur. Pour améliorer la lisibilité, utilise le markdown pour mettre le texte en forme (gras, italique, souligné), en mettant en gras les parties importantes. À la fin de ta réponse, n'oublie pas de rappeler qu'il s'agit d'un discord communautaire."},
+            {"role": "user", "content": message}
+        ]
+    )
+    logging.info(f"Received slash command from {ctx.user.name} {ctx.user.id}")
+    logging.info(f"Response content generated at {datetime.datetime.now()}")
+    
+    response_message = response['choices'][0]['message']['content']
+    message_chunks = [response_message[i:i + 2000] for i in range(0, len(response_message), 2000)]
+   
+    for message_chunk in message_chunks:
+        await ctx.followup.send(message_chunk)
 
+bot.run(Bot_Token)
