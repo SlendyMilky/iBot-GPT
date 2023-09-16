@@ -6,8 +6,9 @@ import openai
 import nextcord
 from nextcord.ext import commands
 
-Discord_Forum_Name = os.getenv('Discord_Forum_Name')
-Bot_Token = os.getenv('Discord_Bot_Token')
+FORUM_CHANNEL_NAME = os.getenv('FORUM_CHANNEL_NAME')
+BOT_TOKEN = os.getenv('BOT_TOKEN')
+ASK_GPT_ROLES_ALLOWED = os.getenv('ASK_GPT_ROLES_ALLOWED')
 
 openai.api_key = os.getenv('OPENAI_API_KEY')
 openai.model = os.getenv('GPT_MODEL')
@@ -23,11 +24,11 @@ bot = commands.Bot(command_prefix="§")
 @bot.event
 async def on_ready():
     print(f"We have logged in as {bot.user}")
-    await bot.change_presence(activity=nextcord.Game(name=f"t'aider dans {Discord_Forum_Name}"))
+    await bot.change_presence(activity=nextcord.Game(name=f"t'aider dans {FORUM_CHANNEL_NAME}"))
 
 @bot.event
 async def on_thread_create(thread):
-    if thread.parent.name == os.getenv('Discord_Forum_Name'):
+    if thread.parent.name == os.getenv('FORUM_CHANNEL_NAME'):
         base_message = await thread.fetch_message(thread.id)
         base_content = f"Titre: {thread.name}\nContenue du thread: {base_message.content}"
         logging.info(f"Thread created by user {base_message.author.name} {base_message.author.id}")
@@ -65,6 +66,7 @@ async def on_thread_create(thread):
             await thread.send(embed=embed)
 
 @bot.slash_command(name="ask-gpt", description="Demander une réponse de chatgpt")
+@commands.has_any_role(*ROLES_ALLOWED)
 async def ask_gpt(ctx, message: str):
     await ctx.response.defer()  # The response will be visible to everyone
     response = openai.ChatCompletion.create(
@@ -85,4 +87,9 @@ async def ask_gpt(ctx, message: str):
     for message_chunk in message_chunks:
         await ctx.followup.send(message_chunk)
 
-bot.run(Bot_Token)
+@ask_gpt.error
+async def ask_gpt_error(ctx, error):
+    if isinstance(error, commands.MissingAnyRole):
+        await ctx.send("Tu n'es pas autorisé a faire cette commande.")
+
+bot.run(BOT_TOKEN)
