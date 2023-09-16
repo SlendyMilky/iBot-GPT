@@ -30,10 +30,23 @@ async def on_thread_create(thread):
     if thread.parent.name == os.getenv('Discord_Forum_Name'):
         base_message = await thread.fetch_message(thread.id)
         base_content = f"Titre: {thread.name}\nContenue du thread: {base_message.content}"
-        logging.info(f"Thread created by user {base_message.author.id}")
+        logging.info(f"Thread created by user {base_message.author.name} {base_message.author.id}")
 
         async with thread.typing():
             response = openai.ChatCompletion.create(
+                model=openai.model,
+                messages=[
+                    {"role": "system", "content": f"Date du jour : {datetime.datetime.now()}"},
+                    {"role": "system", "content": "Fait un titre court de la question"},
+                    {"role": "user", "content": base_content}
+                ]
+            )
+
+            logging.info(f"Title generated at {datetime.datetime.now()}")
+            embed_title = response['choices'][0]['message']['content'].strip()
+            embed_title = re.sub('\n\n', '\n', embed_title)
+            
+            response_text = openai.ChatCompletion.create(
                 model=openai.model,
                 messages=[
                     {"role": "system", "content": f"Date du jour : {datetime.datetime.now()}"},
@@ -42,13 +55,14 @@ async def on_thread_create(thread):
                     {"role": "user", "content": base_content}
                 ]
             )
+            
+            logging.info(f"Response content generated at {datetime.datetime.now()}")
+            embed_content = response_text['choices'][0]['message']['content'].strip()
+            #embed_content = re.sub('\n\n', '\n', embed_content)
 
-            logging.info(f"Response generated at {datetime.datetime.now()}")
-            generated_response = response['choices'][0]['message']['content'].strip()
-            generated_response = re.sub('\n\n', '\n', generated_response)
-            split_response = re.findall('.{1,2000}(?:\n|$)', generated_response, re.DOTALL)
-
-            for message_part in split_response:
-                await thread.send(message_part)
+            embed = nextcord.Embed(title=embed_title, description=embed_content, color=0x265d94)
+            embed.set_footer(text=f"Réponse générée par {openai.model} le {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+            await thread.send(embed=embed)
 
 bot.run(Bot_Token)
+
