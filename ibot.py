@@ -1,15 +1,13 @@
 import openai
 import nextcord
-import textwrap
 import logging
 import datetime
 import os
+import re
 from nextcord.ext import commands
 
 Discord_Forum_Name = os.environ['Discord_Forum_Name']
 Bot_Token = os.environ['Discord_Bot_Token']
-
-now = datetime.now()
 
 # Set up logging to console and file
 logging.basicConfig(level=logging.INFO,
@@ -23,7 +21,7 @@ openai.api_key = os.environ['GPT_KEY']
 openai.model = os.environ['GPT_MODEL']
 
 # Create a new bot
-bot = commands.Bot(command_prefix="!")
+bot = commands.Bot(command_prefix="§")
 
 @bot.event
 async def on_ready():
@@ -50,7 +48,7 @@ async def on_thread_create(thread):
                 messages=[
                     {
                         "role": "system",
-                        "content": "Date du jour : {now}"
+                        "content": f"Date du jour : {datetime.datetime.now()}"
                     },
                     {
                         "role": "system",
@@ -69,12 +67,15 @@ async def on_thread_create(thread):
             # Get the generated response from GPT-3.5 Turbo
             generated_response = response['choices'][0]['message']['content'].strip()
 
-        # Split the output into less than 2000 characters chunks
-        split_response = textwrap.wrap(generated_response, 2000)
+            # Replace double line breaks with a single line break
+            generated_response = generated_response.replace('\n\n', '\n')
 
-        for message_part in split_response:
-            # Send each chunk as a message to the thread
-            await thread.send(message_part)
+            # Split the output into less than 2000 characters chunks preserving line breaks
+            split_response = re.findall('.{1,2000}(?:\n|$)', generated_response, re.DOTALL)
+
+            for message_part in split_response:
+                # Send each chunk as a message to the thread
+                await thread.send(message_part)
 
 # Run the bot
 bot.run(Bot_Token)
