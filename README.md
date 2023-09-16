@@ -51,6 +51,7 @@ docker-compose up -d
 - `Discord_Forum_Name`: Le nom du serveur Discord sur lequel le bot fonctionne.
 - `Discord_Bot_Token`: Le token d'authentification pour le bot Discord.
 - `GPT_KEY`: La clé API pour l'API OpenAI.
+- `GPT_MODEL`: Modèle gpt à utiliser. (gpt-3.5-turbo / gpt-4)
 
 ## Logging 📚
 
