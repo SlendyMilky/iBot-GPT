@@ -35,7 +35,7 @@ async def on_thread_create(thread):
 
         async with thread.typing():
             response = openai.ChatCompletion.create(
-                model=openai.model,
+                model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": f"Date du jour : {datetime.datetime.now()}"},
                     {"role": "system", "content": "Fait un titre court de la question"},
@@ -48,7 +48,7 @@ async def on_thread_create(thread):
             embed_title = re.sub('\n\n', '\n', embed_title)
             
             response_text = openai.ChatCompletion.create(
-                model=openai.model,
+                model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": f"Date du jour : {datetime.datetime.now()}"},
                     {"role": "system", "content": "Si la question posée te semble incorrecte ou manque de détails, n'hésite pas à demander à l'utilisateur des informations supplémentaires. Étant donné que tu as uniquement accès à son message initial, avoir le maximum d'informations sera utile pour fournir une aide optimale."},
@@ -61,7 +61,7 @@ async def on_thread_create(thread):
             embed_content = response_text['choices'][0]['message']['content'].strip()
             #embed_content = re.sub('\n\n', '\n', embed_content)
             embed = nextcord.Embed(title=embed_title, description=embed_content, color=0x265d94)
-            embed.set_footer(text=f"Réponse générée par {openai.model} le {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+            embed.set_footer(text=f"Réponse générée par gpt-3.5-turbo le {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
             await thread.send(embed=embed)
 
 @bot.slash_command(name="ask-gpt", description="Demander une réponse de chatgpt")
