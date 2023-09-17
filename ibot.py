@@ -6,11 +6,12 @@ import openai
 import nextcord
 from nextcord.ext import commands
 
-Discord_Forum_Name = os.getenv('Discord_Forum_Name')
-Bot_Token = os.getenv('Discord_Bot_Token')
+FORUM_CHANNEL_NAME = os.getenv('FORUM_CHANNEL_NAME')
+BOT_TOKEN = os.getenv('BOT_TOKEN')
+ASK_GPT_ROLES_ALLOWED = os.getenv('ASK_GPT_ROLES_ALLOWED')
+ASK_GPT4_ROLES_ALLOWED = os.getenv('ASK_GPT4_ROLES_ALLOWED')
 
-openai.api_key = os.getenv('GPT_KEY')
-openai.model = os.getenv('GPT_MODEL')
+openai.api_key = os.getenv('OPENAI_API_KEY')
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(message)s',
@@ -23,11 +24,11 @@ bot = commands.Bot(command_prefix="§")
 @bot.event
 async def on_ready():
     print(f"We have logged in as {bot.user}")
-    await bot.change_presence(activity=nextcord.Game(name=f"t'aider dans {Discord_Forum_Name}"))
+    await bot.change_presence(activity=nextcord.Game(name=f"t'aider dans {FORUM_CHANNEL_NAME}"))
 
 @bot.event
 async def on_thread_create(thread):
-    if thread.parent.name == os.getenv('Discord_Forum_Name'):
+    if thread.parent.name == os.getenv('FORUM_CHANNEL_NAME'):
         base_message = await thread.fetch_message(thread.id)
         base_content = f"Titre: {thread.name}\nContenue du thread: {base_message.content}"
         logging.info(f"Thread created by user {base_message.author.name} {base_message.author.id}")
@@ -56,13 +57,69 @@ async def on_thread_create(thread):
                 ]
             )
             
-            logging.info(f"Response content generated at {datetime.datetime.now()}")
+            logging.info(f"Response content generated for forum at {datetime.datetime.now()}")
             embed_content = response_text['choices'][0]['message']['content'].strip()
             #embed_content = re.sub('\n\n', '\n', embed_content)
-
             embed = nextcord.Embed(title=embed_title, description=embed_content, color=0x265d94)
             embed.set_footer(text=f"Réponse générée par {openai.model} le {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
             await thread.send(embed=embed)
 
-bot.run(Bot_Token)
+@bot.slash_command(name="ask-gpt", description="Demander une réponse de chatgpt")
+async def ask_gpt(ctx, message: str):
+    member = await ctx.guild.fetch_member(ctx.user.id)
+    user_roles_ids = [str(role.id) for role in member.roles]
+    allowed_roles = ASK_GPT_ROLES_ALLOWED.split(', ')
+    if not any(role_id in user_roles_ids for role_id in allowed_roles):
+        await ctx.response.send_message("Tu n'es pas autorisé a faire cette commande.", ephemeral=True)
+        logging.info(f"Received slash command from unauthorized user : {ctx.user.name} {ctx.user.id}")
+        return
 
+    logging.info(f"Received ask-gpt command from {ctx.user.name} {ctx.user.id}")
+    await ctx.response.defer()
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": f"Date du jour : {datetime.datetime.now()}"},
+            {"role": "system", "content": "Si la question posée te semble incorrecte ou manque de détails, n'hésite pas à demander à l'utilisateur des informations supplémentaires. Étant donné que tu as uniquement accès à son message initial, avoir le maximum d'informations sera utile pour fournir une aide optimale."},
+            {"role": "system", "content": "Tu es un expert en informatique nommé iBot-GPT. Si tu reçois une question qui ne concerne pas ce domaine, n'hésite pas à rappeler à l'utilisateur que ce serveur est axé sur l'informatique, et non sur le sujet évoqué. Assure-toi toujours de t'adresser en tutoyant l'utilisateur. Pour améliorer la lisibilité, utilise le markdown pour mettre le texte en forme (gras, italique, souligné), en mettant en gras les parties importantes. À la fin de ta réponse, n'oublie pas de rappeler qu'il s'agit d'un discord communautaire."},
+            {"role": "user", "content": message}
+        ]
+    )
+    logging.info(f"Response content of ask-gpt generated at {datetime.datetime.now()}")
+    
+    response_message = response['choices'][0]['message']['content']
+    message_chunks = [response_message[i:i + 2000] for i in range(0, len(response_message), 2000)]
+   
+    for message_chunk in message_chunks:
+        await ctx.followup.send(message_chunk)
+
+@bot.slash_command(name="ask-gpt-4", description="Demander une réponse de chatgpt-4")
+async def ask_gpt(ctx, message: str):
+    member = await ctx.guild.fetch_member(ctx.user.id)
+    user_roles_ids = [str(role.id) for role in member.roles]
+    allowed_roles = ASK_GPT4_ROLES_ALLOWED.split(', ')
+    if not any(role_id in user_roles_ids for role_id in allowed_roles):
+        await ctx.response.send_message("Tu n'es pas autorisé a faire cette commande.", ephemeral=True)
+        logging.info(f"Received slash command from unauthorized user : {ctx.user.name} {ctx.user.id}")
+        return
+
+    logging.info(f"Received ask-gpt-4 command from {ctx.user.name} {ctx.user.id}")
+    await ctx.response.defer()
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": f"Date du jour : {datetime.datetime.now()}"},
+            {"role": "system", "content": "Si la question posée te semble incorrecte ou manque de détails, n'hésite pas à demander à l'utilisateur des informations supplémentaires. Étant donné que tu as uniquement accès à son message initial, avoir le maximum d'informations sera utile pour fournir une aide optimale."},
+            {"role": "system", "content": "Tu es un expert en informatique nommé iBot-GPT. Si tu reçois une question qui ne concerne pas ce domaine, n'hésite pas à rappeler à l'utilisateur que ce serveur est axé sur l'informatique, et non sur le sujet évoqué. Assure-toi toujours de t'adresser en tutoyant l'utilisateur. Pour améliorer la lisibilité, utilise le markdown pour mettre le texte en forme (gras, italique, souligné), en mettant en gras les parties importantes. À la fin de ta réponse, n'oublie pas de rappeler qu'il s'agit d'un discord communautaire."},
+            {"role": "user", "content": message}
+        ]
+    )
+    logging.info(f"Response content of ask-gpt-4 generated at {datetime.datetime.now()}")
+    
+    response_message = response['choices'][0]['message']['content']
+    message_chunks = [response_message[i:i + 2000] for i in range(0, len(response_message), 2000)]
+   
+    for message_chunk in message_chunks:
+        await ctx.followup.send(message_chunk)
+
+bot.run(BOT_TOKEN)
