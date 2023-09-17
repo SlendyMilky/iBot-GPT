@@ -12,7 +12,6 @@ ASK_GPT_ROLES_ALLOWED = os.getenv('ASK_GPT_ROLES_ALLOWED')
 ASK_GPT4_ROLES_ALLOWED = os.getenv('ASK_GPT4_ROLES_ALLOWED')
 
 openai.api_key = os.getenv('OPENAI_API_KEY')
-openai.model = os.getenv('GPT_MODEL')
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(message)s',
@@ -78,7 +77,7 @@ async def ask_gpt(ctx, message: str):
     logging.info(f"Received ask-gpt command from {ctx.user.name} {ctx.user.id}")
     await ctx.response.defer()
     response = openai.ChatCompletion.create(
-        model=openai.model,
+        model="gpt-3.5-turbo",
         messages=[
             {"role": "system", "content": f"Date du jour : {datetime.datetime.now()}"},
             {"role": "system", "content": "Si la question posée te semble incorrecte ou manque de détails, n'hésite pas à demander à l'utilisateur des informations supplémentaires. Étant donné que tu as uniquement accès à son message initial, avoir le maximum d'informations sera utile pour fournir une aide optimale."},
