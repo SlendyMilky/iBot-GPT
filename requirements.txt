@@ -1,2 +1,2 @@
-openai
-nextcord
+openai==0.28.1
+nextcord==2.6.0
