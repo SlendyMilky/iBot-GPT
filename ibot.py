@@ -62,7 +62,7 @@ async def on_thread_create(thread):
             embed_content = response_text['choices'][0]['message']['content'].strip()
             embed_content = re.sub('\n\n', '\n', embed_content)
             
-            if len(embed_content) <= 2048:
+            if len(embed_content) <= 4096:
                 embed = nextcord.Embed(title=embed_title, description=embed_content, color=0x265d94)
                 embed.set_footer(text=f"Réponse générée par gpt-4-turbo le {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
                 await thread.send(embed=embed)
@@ -70,7 +70,7 @@ async def on_thread_create(thread):
                 part_num = thread.parent.threads.index(thread) + 1
                 part_title = f"Partie {part_num}"
                 part_embed = nextcord.Embed(title=part_title, description=embed_content, color=0x265d94)
-                part_embed.set_footer(text=f"Réponse générée par gpt-3.5-turbo le {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+                part_embed.set_footer(text=f"Réponse générée par gpt-4-turbo le {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
                 await thread.send(embed=part_embed)
 # Auto respons to forum channel ======================================================================
 
