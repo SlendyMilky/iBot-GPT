@@ -36,7 +36,7 @@ async def on_thread_create(thread):
 
         async with thread.typing():
             response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
+                model="gpt-4-1106-preview",
                 messages=[
                     {"role": "system", "content": f"Date du jour : {datetime.datetime.now()}"},
                     {"role": "system", "content": "Fait un titre court de la question"},
@@ -49,7 +49,7 @@ async def on_thread_create(thread):
             embed_title = re.sub('\n\n', '\n', embed_title)
             
             response_text = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
+                model="gpt-4-1106-preview",
                 messages=[
                     {"role": "system", "content": f"Date du jour : {datetime.datetime.now()}"},
                     {"role": "system", "content": "Si la question posée te semble incorrecte ou manque de détails, n'hésite pas à demander à l'utilisateur des informations supplémentaires. Étant donné que tu as uniquement accès à son message initial, avoir le maximum d'informations sera utile pour fournir une aide optimale."},
@@ -64,7 +64,7 @@ async def on_thread_create(thread):
             
             if len(embed_content) <= 2048:
                 embed = nextcord.Embed(title=embed_title, description=embed_content, color=0x265d94)
-                embed.set_footer(text=f"Réponse générée par gpt-3.5-turbo le {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+                embed.set_footer(text=f"Réponse générée par gpt-4-turbo le {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
                 await thread.send(embed=embed)
             else:
                 part_num = thread.parent.threads.index(thread) + 1
@@ -130,7 +130,7 @@ async def ask_gpt_4(ctx, message: str):
     logging.info(f"Received ask-gpt-4 command from {ctx.user.name} {ctx.user.id}")
     await ctx.response.defer()
     response = openai.ChatCompletion.create(
-        model="gpt-4",
+        model="gpt-4-1106-preview",
         messages=[
             {"role": "system", "content": f"Date du jour : {datetime.datetime.now()}"},
             {"role": "system", "content": "Si la question posée te semble incorrecte ou manque de détails, n'hésite pas à demander à l'utilisateur des informations supplémentaires. Étant donné que tu as uniquement accès à son message initial, avoir le maximum d'informations sera utile pour fournir une aide optimale."},
