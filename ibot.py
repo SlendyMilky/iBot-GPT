@@ -26,6 +26,8 @@ bot = commands.Bot(command_prefix="§")
 async def on_ready():
     print(f"We have logged in as {bot.user}")
     await bot.change_presence(activity=nextcord.Game(name=f"t'aider dans {FORUM_CHANNEL_NAME}"))
+    # Initialisation de l'attribut message_context
+    bot.message_context = {}
 
 # Auto respons to forum channel ======================================================================
 @bot.event
@@ -85,50 +87,74 @@ async def on_message(message):
     # Ignorer les messages provenant du bot lui-même
     if message.author.bot:
         return
+
+    # Vérifiez que GPT_CHANNEL_ID est défini et est un entier
+    try:
+        specific_channel_id = int(GPT_CHANNEL_ID)
+    except ValueError:
+        logging.error(f"GPT_CHANNEL_ID environment variable is not a valid integer: {GPT_CHANNEL_ID}")
+        return
     
     # Vérifie si le message vient du canal de discussion GPT spécifié
-    if message.channel.id == GPT_CHANNEL_ID:
+    if message.channel.id == specific_channel_id:
         # Gestion des messages répondant à d'autres messages pour le contexte
         if message.reference and isinstance(message.reference.resolved, nextcord.Message):
             referenced_message = message.reference.resolved
             logging.info(f"Message is a reply: {referenced_message.clean_content}")
             # Ajout au contexte avec le rôle approprié basé sur l'auteur du message référencé
-            role = "assistant" if bot.user == referenced_message.author else "user"
+            role = "assistant" if bot.user.id == referenced_message.author.id else "user"
             formatted_message = {"role": role, "content": referenced_message.clean_content}
             bot.message_context.setdefault(message.channel.id, []).append(formatted_message)
         else:
             # Si le message n'est pas une réponse, traiter comme début de nouvelle conversation
-            logging.info(f"New conversation started by {message.author.display_name}: {message.clean_content}")
-            # Réinitialisation du contexte pour la nouvelle conversation
             bot.message_context[message.channel.id] = []
-            # Générer la réponse de l'assistant
-            await generate_response(message)
         
         # Ajout du message de l'utilisateur dans le contexte
-        bot.message_context[message.channel.id].append({"role": "user", "content": message.clean_content})
+        content = message.clean_content if message.clean_content else message.content
+        if not content and message.attachments:
+            # Gérer les pièces jointes en les ajoutant au contexte sous forme de texte
+            content = "Pièce jointe: " + ", ".join(attachment.url for attachment in message.attachments)
+
+        if not content:
+            # Si le contenu est toujours vide, il se peut que le message n'ait pas de texte du tout
+            logging.info(f"User {message.author.name} sent a message without text content.")
+            await message.channel.send("Tu n'as envoyé aucun texte. Envoie-moi une question ou un message textuel !", reference=message)
+            return
+
+        user_message = {"role": "user", "content": content}
+        bot.message_context[message.channel.id].append(user_message)
         logging.info(f"Appended user's message to context for channel {message.channel.id}")
 
-    # S'assurer de processeur d'autres commandes potentielles
-    await bot.process_commands(message)
+        # Appel à la fonction générant la réponse basée sur le contexte
+        await generate_response(message)
+    else:
+        # S'assurer de traiter les autres commandes correctement
+        await bot.process_commands(message)
+
 
 async def generate_response(message):
     context = bot.message_context.get(message.channel.id, [])
     logging.info(f"Generating response with context: {context}")
-    async with message.channel.typing():
-        try:
-            response = openai.ChatCompletion.create(
-                model="gpt-4-1106-preview",
-                messages=[
-                    {"role": "system", "content": f"Date du jour : {datetime.datetime.now()} Tu es un expert en informatique nommé iBot-GPT. Si tu reçois une question qui ne concerne pas ce domaine, n'hésite pas à rappeler à l'utilisateur que ce serveur est axé sur l'informatique."},
-                ] + context + [
-                    {"role": "user", "content": message.clean_content}
-                ]
-            )
-            response_content = response.choices[0].message.content.strip()
-            await message.channel.send(response_content, reference=message, mention_author=False)
-            logging.info("Bot successfully sent a response in the channel.")
-        except Exception as e:
-            logging.error(f"Error while generating or sending response: {e}")
+    # Assurez-vous que le contexte n'est pas vide avant de faire appel à l'API OpenAI
+    if context:
+        async with message.channel.typing():
+            try:
+                response = openai.ChatCompletion.create(
+                    model="gpt-4-1106-preview",
+                    messages=[
+                        {"role": "system", "content": f"Date du jour : {datetime.datetime.now()} Tu es un expert en informatique nommé iBot-GPT. Si tu reçois une question qui ne concerne pas ce domaine, n'hésite pas à rappeler à l'utilisateur que ce serveur est axé sur l'informatique."},
+                    ] + context + [
+                        {"role": "user", "content": message.clean_content}
+                    ]
+                )
+                response_content = response.choices[0].message.content.strip()
+                await message.channel.send(response_content, reference=message, mention_author=False)
+                logging.info("Bot successfully sent a response in the channel.")
+            except Exception as e:
+                    logging.error(f"Error while generating or sending response: {e}")
+    else:
+        logging.info("No context available, not sending a response.")
+        # Vous pouvez choisir d'envoyer un message ou de gérer cette situation d'une autre manière
 # Chatting in a specific channel ======================================================================
 
 
