@@ -10,6 +10,7 @@ FORUM_CHANNEL_NAME = os.getenv('FORUM_CHANNEL_NAME')
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 ASK_GPT_ROLES_ALLOWED = os.getenv('ASK_GPT_ROLES_ALLOWED')
 ASK_GPT4_ROLES_ALLOWED = os.getenv('ASK_GPT4_ROLES_ALLOWED')
+GPT_CHANNEL_ID = os.getenv('GPT_CHANNEL_ID')
 
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
@@ -73,6 +74,57 @@ async def on_thread_create(thread):
                 part_embed.set_footer(text=f"Réponse générée par gpt-4-turbo le {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
                 await thread.send(embed=part_embed)
 # Auto respons to forum channel ======================================================================
+
+
+
+
+
+# Chatting in a specific channel ======================================================================
+@bot.event
+async def on_message(message):
+    if message.channel.id == int(GPT_CHANNEL_ID) and not message.author.bot:
+        if message.reference and isinstance(message.reference.resolved, nextcord.Message):
+            # If the message is a reply to another user's message, add it as context but don't respond
+            formatted_message = {
+                "role": "user" if (message.reference.resolved.author != bot.user) else "assistant",
+                "content": message.reference.resolved.clean_content
+            }
+            # Store context for future reference but do not trigger a bot response
+            bot.message_context.setdefault(message.channel.id, []).append(formatted_message)
+        else:
+            # If it's not a reply, consider it as a start of a new conversation
+            # Clean previous context to start a fresh conversation
+            bot.message_context[message.channel.id] = []
+
+            # Generate a response from the assistant
+            await generate_response(message)
+        # Keep track of the context in any case
+        bot.message_context.setdefault(message.channel.id, []).append({
+            "role": "user",
+            "content": message.clean_content
+        })
+
+        # Ensure this handler doesn't block other on_message events
+        await bot.process_commands(message)
+
+async def generate_response(message):
+    context = bot.message_context.get(message.channel.id, [])
+    async with message.channel.typing():
+        response = openai.ChatCompletion.create(
+            model="gpt-4-1106-preview",
+            messages=[
+                {"role": "system", "content": "Tu es un assistant virtuel intelligent destiné à aider et à interagir avec les membres du forum, en respectant les directives et le contexte du serveur. Ton but est d'être utile, informatif et respectueux dans toutes tes interactions."},
+            ] + context + [
+                {"role": "user", "content": message.clean_content}
+            ]
+        )
+        response_content = response['choices'][0]['message']['content'].strip()
+        await message.channel.send(response_content, reference=message, mention_author=False)
+
+# Initialize message context store
+bot.message_context = {}
+
+# Chatting in a specific channel ======================================================================
 
 
 
