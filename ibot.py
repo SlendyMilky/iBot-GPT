@@ -82,53 +82,53 @@ async def on_thread_create(thread):
 # Chatting in a specific channel ======================================================================
 @bot.event
 async def on_message(message):
-    if message.channel.id == int(GPT_CHANNEL_ID) and not message.author.bot:
+    # Ignorer les messages provenant du bot lui-même
+    if message.author.bot:
+        return
+    
+    # Vérifie si le message vient du canal de discussion GPT spécifié
+    if message.channel.id == GPT_CHANNEL_ID:
+        # Gestion des messages répondant à d'autres messages pour le contexte
         if message.reference and isinstance(message.reference.resolved, nextcord.Message):
-            # If the message is a reply to another user's message, add it as context but don't respond
-            logging.info(f"Message is a reply: {message.clean_content}")
-            formatted_message = {
-                "role": "user" if (message.reference.resolved.author != bot.user) else "assistant",
-                "content": message.reference.resolved.clean_content
-            }
-            # Store context for future reference but do not trigger a bot response
+            referenced_message = message.reference.resolved
+            logging.info(f"Message is a reply: {referenced_message.clean_content}")
+            # Ajout au contexte avec le rôle approprié basé sur l'auteur du message référencé
+            role = "assistant" if bot.user == referenced_message.author else "user"
+            formatted_message = {"role": role, "content": referenced_message.clean_content}
             bot.message_context.setdefault(message.channel.id, []).append(formatted_message)
-            logging.info(f"Stored context: {bot.message_context[message.channel.id]}")
         else:
-            # If it's not a reply, consider it as a start of a new conversation
-            logging.info(f"Starting new conversation with message: {message.clean_content}")
-            # Generate a response from the assistant
+            # Si le message n'est pas une réponse, traiter comme début de nouvelle conversation
+            logging.info(f"New conversation started by {message.author.display_name}: {message.clean_content}")
+            # Réinitialisation du contexte pour la nouvelle conversation
+            bot.message_context[message.channel.id] = []
+            # Générer la réponse de l'assistant
             await generate_response(message)
+        
+        # Ajout du message de l'utilisateur dans le contexte
+        bot.message_context[message.channel.id].append({"role": "user", "content": message.clean_content})
+        logging.info(f"Appended user's message to context for channel {message.channel.id}")
 
-        # Append user's message to context
-        bot.message_context.setdefault(message.channel.id, []).append({
-            "role": "user",
-            "content": message.clean_content
-        })
-        logging.info(f"Appended user's message to context: {bot.message_context[message.channel.id]}")
-
-        # Ensure this handler doesn't block other on_message events
-        await bot.process_commands(message)
+    # S'assurer de processeur d'autres commandes potentielles
+    await bot.process_commands(message)
 
 async def generate_response(message):
     context = bot.message_context.get(message.channel.id, [])
+    logging.info(f"Generating response with context: {context}")
     async with message.channel.typing():
         try:
             response = openai.ChatCompletion.create(
                 model="gpt-4-1106-preview",
                 messages=[
-                    {"role": "system", "content": f"Date du jour : {datetime.datetime.now()} Tu es un expert en informatique nommé iBot-GPT. Si tu reçois une question qui ne concerne pas ce domaine, n'hésite pas à rappeler à l'utilisateur que ce serveur est axé sur l'informatique, et non sur le sujet évoqué. Assure-toi toujours de t'adresser en tutoyant l'utilisateur. Pour améliorer la lisibilité, utilise le markdown pour mettre le texte en forme (gras, italique, souligné), en mettant en gras les parties importantes."},
+                    {"role": "system", "content": f"Date du jour : {datetime.datetime.now()} Tu es un expert en informatique nommé iBot-GPT. Si tu reçois une question qui ne concerne pas ce domaine, n'hésite pas à rappeler à l'utilisateur que ce serveur est axé sur l'informatique."},
                 ] + context + [
                     {"role": "user", "content": message.clean_content}
                 ]
             )
-            response_content = response['choices'][0]['message']['content'].strip()
+            response_content = response.choices[0].message.content.strip()
             await message.channel.send(response_content, reference=message, mention_author=False)
-            logging.info("Successfully sent message to channel.")
+            logging.info("Bot successfully sent a response in the channel.")
         except Exception as e:
-            logging.error(f"Error generating or sending response: {e}")
-
-# Initialize message context store
-bot.message_context = {}
+            logging.error(f"Error while generating or sending response: {e}")
 # Chatting in a specific channel ======================================================================
 
 
