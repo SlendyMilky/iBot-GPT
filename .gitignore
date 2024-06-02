@@ -1,2 +1,4 @@
 thread_log.txt
 *.tar
+__pycache__
+bot_log.txt

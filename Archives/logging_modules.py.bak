@@ -1,0 +1,37 @@
+import nextcord
+from nextcord.ext import commands
+import logging
+
+# Configuration du logger
+logger = logging.getLogger('bot')
+logger.setLevel(logging.INFO)
+
+formatter = logging.Formatter('%(asctime)s [%(name)s] %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
+
+stream_handler = logging.StreamHandler()
+stream_handler.setFormatter(formatter)
+
+file_handler = logging.FileHandler("bot_log.txt")
+file_handler.setFormatter(formatter)
+
+logger.addHandler(stream_handler)
+logger.addHandler(file_handler)
+
+class LoggingModule(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        logger.info(f'Bot connecté en tant que {self.bot.user}')
+
+    @commands.Cog.listener()
+    async def on_command(self, ctx):
+        logger.info(f'Commande exécutée: {ctx.command} par {ctx.author} dans {ctx.guild.name}/{ctx.channel.name}')
+
+    @commands.Cog.listener()
+    async def on_command_error(self, ctx, error):
+        logger.error(f'Erreur avec la commande {ctx.command}: {error}')
+
+def setup(bot):
+    bot.add_cog(LoggingModule(bot))
