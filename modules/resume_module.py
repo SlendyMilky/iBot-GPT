@@ -47,8 +47,8 @@ class Resume(commands.Cog):
             await interaction.response.send_message("Vous devez demander au moins un message.", ephemeral=True)
             return
 
-        if interaction.channel.type != ChannelType.text:
-            await interaction.response.send_message("Cette commande ne peut être utilisée que dans un canal textuel.", ephemeral=True)
+        if interaction.channel.type not in [ChannelType.text, ChannelType.public_thread, ChannelType.private_thread]:
+            await interaction.response.send_message("Cette commande ne peut être utilisée que dans un canal textuel ou un thread.", ephemeral=True)
             return
 
         # Début du traitement en différé
