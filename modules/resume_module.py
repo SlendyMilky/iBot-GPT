@@ -7,7 +7,7 @@ import logging
 import asyncio
 
 # Configuration du logger
-# logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('bot.resume_module')
 
 # Initialiser le client OpenAI
@@ -24,6 +24,10 @@ if resume_authorized_role_ids_str:
 else:
     resume_authorized_role_ids = []
     logger.warning("La variable d'environnement 'RESUME_AUTHORIZED_ROLE_IDS' est vide ou non définie.")
+
+# ID du channel de log spécifique au module resume
+resume_log_channel_id_str = os.getenv('RESUME_LOG_CHANNEL_ID', '')
+resume_log_channel_id = int(resume_log_channel_id_str) if resume_log_channel_id_str.isdigit() else None
 
 # Formats d'image supportés
 SUPPORTED_IMAGE_FORMATS = ["png", "jpeg", "jpg", "gif", "webp"]
@@ -47,8 +51,8 @@ class Resume(commands.Cog):
             await interaction.response.send_message("Vous devez demander au moins un message.", ephemeral=True)
             return
 
-        if interaction.channel.type not in [ChannelType.text, ChannelType.public_thread, ChannelType.private_thread]:
-            await interaction.response.send_message("Cette commande ne peut être utilisée que dans un canal textuel ou un thread.", ephemeral=True)
+        if interaction.channel.type != ChannelType.text:
+            await interaction.response.send_message("Cette commande ne peut être utilisée que dans un canal textuel.", ephemeral=True)
             return
 
         # Début du traitement en différé
@@ -148,6 +152,15 @@ class Resume(commands.Cog):
             embed.set_footer(text=f"Total Tokens: {response.usage.total_tokens} | Total Cost: {total_cost:.6f} USD")
 
             await progress_message.edit(embed=embed, content=None)
+
+            # Envoi au channel de log si défini
+            if resume_log_channel_id:
+                log_channel = self.bot.get_channel(resume_log_channel_id)
+                if log_channel:
+                    log_embed = Embed(title="Résumé des messages", description=summary, color=0x00ff00)
+                    log_embed.set_footer(text=f"Total Tokens: {response.usage.total_tokens} | Total Cost: {total_cost:.6f} USD")
+                    log_embed.add_field(name="Commande par", value=interaction.user.name, inline=False)
+                    await log_channel.send(embed=log_embed)
         except Exception as e:
             logger.error(f"Erreur lors de l'appel à l'API d'OpenAI: {e}", exc_info=True)
             await progress_message.edit(
