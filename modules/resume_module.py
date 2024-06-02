@@ -7,7 +7,7 @@ import logging
 import asyncio
 
 # Configuration du logger
-logging.basicConfig(level=logging.INFO)
+#logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('bot.resume_module')
 
 # Initialiser le client OpenAI
@@ -66,6 +66,13 @@ class Resume(commands.Cog):
             if message.author.bot:
                 continue
             messages.append(message)
+
+        if not messages:
+            await progress_message.edit(content="Aucun message trouvé.")
+            return
+
+        first_message = messages[-1]  # Le premier message en termes de temps
+        last_message = messages[0]  # Le dernier message en termes de temps
 
         descriptions = {}
         total_input_tokens = 0
@@ -150,6 +157,8 @@ class Resume(commands.Cog):
 
             embed = Embed(title="Résumé des messages", description=summary, color=0x00ff00)
             embed.set_footer(text=f"Total Tokens: {response.usage.total_tokens} | Total Cost: {total_cost:.6f} USD")
+            embed.add_field(name="Premier message", value=f"[Lien]({first_message.jump_url})", inline=True)
+            embed.add_field(name="Dernier message", value=f"[Lien]({last_message.jump_url})", inline=True)
 
             await progress_message.edit(embed=embed, content=None)
 
@@ -159,6 +168,8 @@ class Resume(commands.Cog):
                 if log_channel:
                     log_embed = Embed(title="Résumé des messages", description=summary, color=0x00ff00)
                     log_embed.set_footer(text=f"Total Tokens: {response.usage.total_tokens} | Total Cost: {total_cost:.6f} USD")
+                    log_embed.add_field(name="Premier message", value=f"[Lien]({first_message.jump_url})", inline=True)
+                    log_embed.add_field(name="Dernier message", value=f"[Lien]({last_message.jump_url})", inline=True)
                     log_embed.add_field(name="Commande par", value=interaction.user.name, inline=False)
                     await log_channel.send(embed=log_embed)
         except Exception as e:
