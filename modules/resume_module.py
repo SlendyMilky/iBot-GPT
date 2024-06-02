@@ -7,7 +7,7 @@ import logging
 import asyncio
 
 # Configuration du logger
-#logging.basicConfig(level=logging.INFO)
+# logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('bot.resume_module')
 
 # Initialiser le client OpenAI
@@ -155,7 +155,7 @@ class Resume(commands.Cog):
             output_cost = response.usage.completion_tokens * 15 / 1_000_000
             total_cost = input_cost + output_cost + image_cost
 
-            embed = Embed(title="Résumé des messages", description=summary, color=0x00ff00)
+            embed = Embed(title=f"Résumé des messages ({num_messages} messages)", description=summary, color=0x454FBF)
             embed.set_footer(text=f"Total Tokens: {response.usage.total_tokens} | Total Cost: {total_cost:.6f} USD")
             embed.add_field(name="Premier message", value=f"[Lien]({first_message.jump_url})", inline=True)
             embed.add_field(name="Dernier message", value=f"[Lien]({last_message.jump_url})", inline=True)
@@ -166,7 +166,7 @@ class Resume(commands.Cog):
             if resume_log_channel_id:
                 log_channel = self.bot.get_channel(resume_log_channel_id)
                 if log_channel:
-                    log_embed = Embed(title="Résumé des messages", description=summary, color=0x00ff00)
+                    log_embed = Embed(title=f"Résumé des messages ({num_messages} messages)", description=summary, color=0x454FBF)
                     log_embed.set_footer(text=f"Total Tokens: {response.usage.total_tokens} | Total Cost: {total_cost:.6f} USD")
                     log_embed.add_field(name="Premier message", value=f"[Lien]({first_message.jump_url})", inline=True)
                     log_embed.add_field(name="Dernier message", value=f"[Lien]({last_message.jump_url})", inline=True)
