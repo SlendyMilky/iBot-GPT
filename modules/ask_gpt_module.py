@@ -42,7 +42,7 @@ class AskGpt(commands.Cog):
         logger.info(f"Commande /ask-gpt utilisée par {user} dans le salon {channel.name}")
 
         # Début du traitement en différé
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=False)
 
         system_message = {
             "role": "system",
