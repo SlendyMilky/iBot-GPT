@@ -28,4 +28,4 @@ RUN pip install -U python-dotenv --break-system-packages && \
     pip install -r requirements.txt --break-system-packages
 
 # Run the application
-CMD ["python3", "/iBot/ibot.py"]
+CMD ["python3", "/iBot/ibot-gpt.py"]
