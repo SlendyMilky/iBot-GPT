@@ -1,6 +1,6 @@
 import nextcord
 from nextcord.ext import commands
-from nextcord import Interaction, ChannelType, Embed
+from nextcord import Embed
 import os
 from openai import OpenAI
 import datetime
@@ -15,7 +15,7 @@ client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
 # Variables d'environnement pour la configuration
 auto_reply_forum_ids_str = os.getenv('AUTO_REPLY_FORUM_IDS', '')
-enable_detailed_logs = os.getenv('ENABLE_DETAILED_LOGS', 'true').lower() == 'true'
+enable_detailed_logs = os.getenv('ENABLE_DETAILED_LOGS', 'false').lower() == 'true'
 
 # Liste des forums autorisés via les ID de salon spécifiés dans une variable d'environnement
 if auto_reply_forum_ids_str:
@@ -47,8 +47,9 @@ class AutoReply(commands.Cog):
             return
 
         base_message = messages[0]
-        base_content = f"Titre: {thread.name}\nContenu du thread: {base_message.content}"
-        logger.info(f"Thread créé par {base_message.author.name} (ID: {base_message.author.id}) dans le forum (ID: {thread.parent_id})")
+        user_name = base_message.author.name
+        base_content = f"Pseudo: {user_name}\nTitre: {thread.name}\nContenu du thread: {base_message.content}"
+        logger.info(f"Thread créé par {user_name} (ID: {base_message.author.id}) dans le forum (ID: {thread.parent_id})")
 
         image_urls = [attachment.url for attachment in base_message.attachments if any(attachment.url.endswith(ext) for ext in SUPPORTED_IMAGE_FORMATS)]
 
@@ -90,12 +91,15 @@ class AutoReply(commands.Cog):
 
             await asyncio.sleep(1)  # Petite pause pour éviter les rate limits
 
-        base_content = " ".join([base_content] + [descriptions[url] for url in image_urls])
+        # Ajout des descriptions des images au contenu de base
+        if descriptions:
+            image_descriptions = "\n".join([f"URL: {url}\nDescription: {desc}" for url, desc in descriptions.items()])
+            base_content += f"\nDescriptions des images:\n{image_descriptions}"
 
         messages = [
             {"role": "system", "content": f"Date du jour : {datetime.datetime.now()}"},
             {"role": "system", "content": "Si la question posée te semble incorrecte ou manque de détails, n'hésite pas à demander à l'utilisateur des informations supplémentaires. Étant donné que tu as uniquement accès à son message initial, avoir le maximum d'informations sera utile pour fournir une aide optimale."},
-            {"role": "system", "content": "Tu es un expert en informatique nommé iBot-GPT. Si tu reçois une question qui ne concerne pas ce domaine, n'hésite pas à rappeler à l'utilisateur que ce serveur est axé sur l'informatique. Assure-toi toujours de t'adresser en tutoyant l'utilisateur. Pour améliorer la lisibilité, utilise le markdown pour mettre le texte en forme (gras, italique, souligné), en mettant en gras les parties importantes. À la fin de ta réponse, n'oublie pas de rappeler qu'il s'agit d'un Discord communautaire."},
+            {"role": "system", "content": "Tu es un expert en informatique nommé iBot-GPT. Si tu reçois une question qui ne concerne pas ce domaine, n'hésite pas à rappeler à l'utilisateur que ce serveur est axé sur l'informatique. Assure-toi toujours de t'adresser en tutoyant l'utilisateur. Pour améliorer la lisibilité, utilise le markdown compatible embed discord pour mettre le texte en forme (gras, italique, souligné), en mettant en gras les parties importantes."},
             {"role": "user", "content": base_content},
         ]
 
@@ -116,8 +120,8 @@ class AutoReply(commands.Cog):
             # Correction du calcul des coûts
             prompt_tokens = response.usage.prompt_tokens
             completion_tokens = response.usage.completion_tokens
-            input_cost = prompt_tokens * 0.000005 # coût simulant des tokens de prompt de GPT-4o
-            output_cost = completion_tokens * 0.000015 # coût simulant des tokens de completion de GPT-4o
+            input_cost = prompt_tokens * 0.000005  # coût simulant des tokens de prompt de GPT-4o
+            output_cost = completion_tokens * 0.000015  # coût simulant des tokens de completion de GPT-4o
             total_cost = input_cost + output_cost + image_cost
 
             # Fonction pour découper un texte en morceaux de taille maximale tout en conservant les mots entiers
@@ -141,7 +145,7 @@ class AutoReply(commands.Cog):
             for i, part in enumerate(parts):
                 title = f"{'Réponse à la question' if i == 0 else f'Partie : {i+1}'}"
                 embed = Embed(title=title, description=part, color=0x454FBF)
-                embed.set_footer(text=f"Réponse générée par GPT-4 le {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\nTotal Tokens: {response.usage.total_tokens} | Coût: {total_cost:.6f} USD")
+                embed.set_footer(text=f"Réponse générée par GPT-4o le {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\nTotal Tokens: {response.usage.total_tokens} | Coût: {total_cost:.6f} USD")
                 await thread.send(embed=embed)
 
             logger.info(f"Réponse envoyée dans le thread: {thread.name} (ID: {thread.id})")
