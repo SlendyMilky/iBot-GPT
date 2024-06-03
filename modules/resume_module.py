@@ -7,11 +7,15 @@ import logging
 import asyncio
 
 # Configuration du logger
-# logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('bot.resume_module')
 
+# Assure-toi d'avoir la clé d'API OpenAI
+openai_api_key = os.getenv('OPENAI_API_KEY')
+if not openai_api_key:
+    raise ValueError("La variable d'environnement 'OPENAI_API_KEY' n'est pas définie.")
+
 # Initialiser le client OpenAI
-client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+client = OpenAI(api_key=openai_api_key)
 
 # Liste des rôles autorisés pour la commande resume
 resume_authorized_role_ids_str = os.getenv('RESUME_AUTHORIZED_ROLE_IDS', '')

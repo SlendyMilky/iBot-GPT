@@ -10,8 +10,18 @@ import asyncio
 # Configuration du logger
 logger = logging.getLogger('bot.auto_reply_module')
 
+# Assurez-vous que la clé API est définie
+api_key = os.getenv('OPENAI_API_KEY')
+if not api_key:
+    logger.error("La clé API 'OPENAI_API_KEY' n'est pas définie dans les variables d'environnement.")
+    raise EnvironmentError("La clé API 'OPENAI_API_KEY' doit être définie.")
+
 # Initialiser le client OpenAI
-client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+try:
+    client = OpenAI(api_key=api_key)
+except Exception as e:
+    logger.error(f"Erreur lors de l'initialisation du client OpenAI: {e}")
+    raise
 
 # Variables d'environnement pour la configuration
 auto_reply_forum_ids_str = os.getenv('AUTO_REPLY_FORUM_IDS', '')

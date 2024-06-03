@@ -9,8 +9,13 @@ import logging
 # logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('bot.ask_gpt_module')
 
+# Récupérer la clé API OpenAI à partir des variables d'environnement
+api_key = os.getenv('OPENAI_API_KEY')
+if not api_key:
+    raise ValueError("La clé API OpenAI (OPENAI_API_KEY) n'est pas définie dans les variables d'environnement.")
+
 # Initialiser le client OpenAI
-client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+client = OpenAI(api_key=api_key)
 
 # Liste des rôles non autorisés pour la commande ask-gpt
 ask_gpt_unauthorized_role_ids_str = os.getenv('ASK_GPT_UNAUTHORIZED_ROLE_IDS', '')
