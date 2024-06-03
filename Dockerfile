@@ -1,27 +1,31 @@
 FROM alpine:latest
 
-# Prepare Image
-RUN apk update && apk upgrade
-RUN apk add htop tzdata
-RUN cp /usr/share/zoneinfo/Europe/Zurich /etc/localtime
-RUN echo "Europe/Zurich" >  /etc/timezone
+# Configure timezone and install dependencies
+RUN apk update && \
+    apk upgrade && \
+    apk add --no-cache \
+    htop \
+    tzdata \
+    python3 \
+    py3-pip && \
+    cp /usr/share/zoneinfo/Europe/Zurich /etc/localtime && \
+    echo "Europe/Zurich" > /etc/timezone && \
+    ln -sf /usr/bin/python3 /usr/bin/python && \
+    pip install --no-cache --upgrade pip setuptools --break-system-packages
 
-# Install python/pip
+# Set environment variables
 ENV PYTHONUNBUFFERED=1
-RUN apk add --update --no-cache python3 && ln -sf python3 /usr/bin/python
-#RUN python3 -m ensurepip
-RUN pip3 install --no-cache --upgrade pip setuptools
-
 ENV VIRTUAL_ENV=/opt/venv
-RUN python3 -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-# Install dependencies:
-RUN mkdir /iBot
-WORKDIR /iBot
-ADD . /iBot/
-RUN pip install -U python-dotenv
-RUN pip install -r requirements.txt
+# Create virtual environment
+RUN python3 -m venv $VIRTUAL_ENV
 
-# Run the application:
-CMD ["python3", "/iBot/ibot.py"]`
+# Install python package dependencies
+WORKDIR /iBot
+COPY . /iBot/
+RUN pip install -U python-dotenv --break-system-packages && \
+    pip install -r requirements.txt --break-system-packages
+
+# Run the application
+CMD ["python3", "/iBot/ibot.py"]
