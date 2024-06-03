@@ -1,0 +1,21 @@
+name: Upgrade Version
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  upgrade-version:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Update Version Files
+        uses: pocket-apps/action-update-version@v1
+        with:
+          files: 'VERSION'
+          version-regexp: '\d+.\d+.\d+'
+          repo-token: ${{ secrets.GH_TOKEN }}
+          commit-message: 'ci: update version to v%version%'
