@@ -16,7 +16,7 @@ bot = commands.Bot(command_prefix="§", intents=intents)
 logger = logging.getLogger('bot')
 logger.setLevel(logging.INFO)
 
-formatter = logging.Formatter('%(asctime)s [%(name)s] %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
+formatter = logging.Formatter('%(asctime)s [%(name)s] %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
 
 stream_handler = logging.StreamHandler()
 stream_handler.setFormatter(formatter)
