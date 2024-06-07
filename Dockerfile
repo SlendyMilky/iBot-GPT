@@ -24,7 +24,7 @@ RUN python3 -m venv $VIRTUAL_ENV
 # Install python package dependencies
 WORKDIR /iBot
 COPY . /iBot/
-RUN pip install -U python-dotenv --break-system-packages && \
+RUN pip install python-dotenv --break-system-packages && \
     pip install -r requirements.txt --break-system-packages
 
 # Run the application

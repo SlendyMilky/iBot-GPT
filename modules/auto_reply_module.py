@@ -9,6 +9,7 @@ import asyncio
 
 # Configuration du logger
 logger = logging.getLogger('bot.auto_reply_module')
+# logging.basicConfig(level=logging.DEBUG)
 
 # Assurez-vous que la clé API est définie
 api_key = os.getenv('OPENAI_API_KEY')
@@ -49,6 +50,8 @@ class AutoReply(commands.Cog):
     async def on_thread_create(self, thread: nextcord.Thread):
         if thread.parent_id not in auto_reply_forum_ids:
             return
+        
+        await asyncio.sleep(2)  # Ajouter un délai de 2 secondes pour s'assurer que le message initial est disponible
 
         # Récupération du premier message du thread
         messages = await thread.history(limit=1).flatten()
@@ -109,14 +112,14 @@ class AutoReply(commands.Cog):
         messages = [
             {"role": "system", "content": f"Date du jour : {datetime.datetime.now()}"},
             {"role": "system", "content": "Si la question posée te semble incorrecte ou manque de détails, n'hésite pas à demander à l'utilisateur des informations supplémentaires. Étant donné que tu as uniquement accès à son message initial, avoir le maximum d'informations sera utile pour fournir une aide optimale."},
-            {"role": "system", "content": "Tu es un expert en informatique nommé iBot-GPT. Si tu reçois une question qui ne concerne pas ce domaine, n'hésite pas à rappeler à l'utilisateur que ce serveur est axé sur l'informatique. Assure-toi toujours de t'adresser en tutoyant l'utilisateur. Pour améliorer la lisibilité, utilise le markdown compatible embed discord, utilise des retours a la ligne pour faciliter la lecture, n'utilise pas de #."},
+            {"role": "system", "content": "Tu es un expert en informatique nommé iBot-GPT. Si tu reçois une question qui ne concerne pas ce domaine, n'hésite pas à rappeler à l'utilisateur que ce serveur est axé sur l'informatique. Assure-toi toujours de t'adresser en tutoyant l'utilisateur. Pour améliorer la lisibilité, utilise le markdown compatible embed discord."},
             {"role": "user", "content": base_content},
         ]
 
         if enable_detailed_logs:
-            logger.info("Messages envoyés à ChatGPT :")
+            logger.debug("Messages envoyés à ChatGPT :")
             for message in messages:
-                logger.info(message)
+                logger.debug(message)
 
         async with thread.typing():
             response = client.chat.completions.create(
