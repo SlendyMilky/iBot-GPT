@@ -10,8 +10,18 @@ import asyncio
 # Configuration du logger
 logger = logging.getLogger('bot.auto_reply_module')
 
+# Assurez-vous que la clé API est définie
+api_key = os.getenv('OPENAI_API_KEY')
+if not api_key:
+    logger.error("La clé API 'OPENAI_API_KEY' n'est pas définie dans les variables d'environnement.")
+    raise EnvironmentError("La clé API 'OPENAI_API_KEY' doit être définie.")
+
 # Initialiser le client OpenAI
-client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+try:
+    client = OpenAI(api_key=api_key)
+except Exception as e:
+    logger.error(f"Erreur lors de l'initialisation du client OpenAI: {e}")
+    raise
 
 # Variables d'environnement pour la configuration
 auto_reply_forum_ids_str = os.getenv('AUTO_REPLY_FORUM_IDS', '')
@@ -126,16 +136,16 @@ class AutoReply(commands.Cog):
 
             # Fonction pour découper un texte en morceaux de taille maximale tout en conservant les mots entiers
             def split_text(text, max_length=4096):
-                words = text.split()
+                lines = text.split('\n')
                 parts = []
-                current_part = words[0]
+                current_part = ""
 
-                for word in words[1:]:
-                    if len(current_part) + len(word) + 1 <= max_length:
-                        current_part += " " + word
+                for line in lines:
+                    if len(current_part) + len(line) + 1 <= max_length:
+                        current_part += line + "\n"
                     else:
                         parts.append(current_part)
-                        current_part = word
+                        current_part = line + "\n"
 
                 parts.append(current_part)
                 return parts
