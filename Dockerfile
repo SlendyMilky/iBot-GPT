@@ -8,18 +8,11 @@ RUN apk update && \
     tzdata \
     python3 \
     py3-pip && \
+    mkdir /iBot && \
     cp /usr/share/zoneinfo/Europe/Zurich /etc/localtime && \
     echo "Europe/Zurich" > /etc/timezone && \
     ln -sf /usr/bin/python3 /usr/bin/python && \
     pip install --no-cache --upgrade pip setuptools --break-system-packages
-
-# Set environment variables
-ENV PYTHONUNBUFFERED=1
-ENV VIRTUAL_ENV=/opt/venv
-ENV PATH="$VIRTUAL_ENV/bin:$PATH"
-
-# Create virtual environment
-RUN python3 -m venv $VIRTUAL_ENV
 
 # Install python package dependencies
 WORKDIR /iBot
