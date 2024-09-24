@@ -54,6 +54,25 @@ class AutoReply(commands.Cog):
 
     @commands.Cog.listener()
     async def on_thread_create(self, thread: nextcord.Thread):
+        # Vérification des tags du thread en utilisant 'applied_tags'
+        tags = [tag.name for tag in thread.applied_tags]
+        if "No GPT" in tags:
+            logger.info(f"Tag 'No GPT' détecté dans le thread: {thread.name} (ID: {thread.id}). Aucune action n'est effectuée.")
+            return  # Arrêt de la fonction si le tag "No GPT" est présent
+
+        # Sélection du modèle basé sur les tags
+        model = "gpt-4o"  # Modèle par défaut
+        model_cost_input = 0.000005  # Coût par token d'entrée pour gpt-4o
+        model_cost_output = 0.000015  # Coût par token de sortie pour gpt-4o
+        if "gpt-3.5" in tags:
+            model = "gpt-3.5-turbo"  # Modèle moins cher si le tag est présent
+            model_cost_input = 0.000003  # Coût par token d'entrée pour gpt-3.5-turbo
+            model_cost_output = 0.000006  # Coût par token de sortie pour gpt-3.5-turbo
+        elif "gpt-4-turbo" in tags:
+            model = "gpt-4-turbo"
+            model_cost_input = 0.00001  # Coût par token d'entrée pour gpt-4-turbo
+            model_cost_output = 0.00003  # Coût par token de sortie pour gpt-4-turbo
+
         if thread.parent_id not in auto_reply_forum_ids:
             return
         
@@ -129,7 +148,7 @@ class AutoReply(commands.Cog):
 
         async with thread.typing():
             response = client.chat.completions.create(
-                model="gpt-4o",
+                model=model,  # Utilisation du modèle sélectionné
                 messages=messages
             )
 
@@ -139,8 +158,8 @@ class AutoReply(commands.Cog):
             # Correction du calcul des coûts
             prompt_tokens = response.usage.prompt_tokens
             completion_tokens = response.usage.completion_tokens
-            input_cost = prompt_tokens * 0.000005  # coût simulant des tokens de prompt de GPT-4o
-            output_cost = completion_tokens * 0.000015  # coût simulant des tokens de completion de GPT-4o
+            input_cost = prompt_tokens * model_cost_input  # coût simulant des tokens de prompt
+            output_cost = completion_tokens * model_cost_output  # coût simulant des tokens de completion
             total_cost = input_cost + output_cost + image_cost
 
             # Fonction pour découper un texte en morceaux de taille maximale tout en conservant les mots entiers
@@ -164,7 +183,7 @@ class AutoReply(commands.Cog):
             for i, part in enumerate(parts):
                 title = f"{'Réponse à la question' if i == 0 else f'Partie : {i+1}'}"
                 embed = Embed(title=title, description=part, color=0x454FBF)
-                embed.set_footer(text=f"Réponse générée par GPT-4o le {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\nTotal Tokens: {response.usage.total_tokens} | Coût: {total_cost:.6f} USD")
+                embed.set_footer(text=f"Réponse générée par {model} le {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\nTotal Tokens: {response.usage.total_tokens} | Coût: {total_cost:.6f} USD")
                 await thread.send(embed=embed)
 
             logger.info(f"Réponse envoyée dans le thread: {thread.name} (ID: {thread.id})")

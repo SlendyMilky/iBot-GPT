@@ -1,6 +1,6 @@
 services:
     ibot-gpt:
-        image: 'slendymilky/ibot-gpt:2.0.3'
+        image: 'ghcr.io/slendymilky/ibot-gpt:2.0.3'
         container_name: ibot-gpt
         restart: always
         environment:
