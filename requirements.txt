@@ -2,3 +2,4 @@ openai==1.47.1
 nextcord==2.6.0
 logging==0.4.9.6
 asyncio==3.4.3
+redis==5.0.8
