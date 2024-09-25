@@ -1,7 +1,6 @@
-version: '3.9'
 services:
     ibot-gpt:
-        image: 'slendymilky/ibot-gpt:latest'
+        image: 'ghcr.io/slendymilky/ibot-gpt:2.0.3'
         container_name: ibot-gpt
         restart: always
         environment:
