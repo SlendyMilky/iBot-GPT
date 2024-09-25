@@ -7,7 +7,7 @@ import datetime
 import logging
 import asyncio
 import redis
-import json  # Ajoutez cette importation en haut du fichier
+import json
 
 # Configuration du logger
 logger = logging.getLogger('bot.auto_reply_module')
@@ -100,7 +100,7 @@ class AutoReply(commands.Cog):
 
             base_message = messages[0]
             user_name = base_message.author.name
-            base_content = f"Pseudo: {user_name}\nTitre: {thread.name}\nContenu du thread: {base_message.content}"
+            base_content = f"{user_name}: {base_message.content}"  # Modification ici
             logger.info(f"Thread créé par {user_name} (ID: {base_message.author.id}) dans le forum (ID: {thread.parent_id})")
 
             image_urls = [attachment.url for attachment in base_message.attachments if any(attachment.url.endswith(ext) for ext in SUPPORTED_IMAGE_FORMATS)]
@@ -209,65 +209,96 @@ class AutoReply(commands.Cog):
 
         thread = message.channel
         if isinstance(thread, nextcord.Thread) and thread.parent_id in auto_reply_forum_ids:
-            tags = [tag.name for tag in thread.applied_tags]
-            if "GPT-Helper" in tags:
-                # Récupérer la conversation depuis Redis
-                conversation = redis_client.lrange(f"thread:{thread.id}", 0, -1)
-                conversation = [json.loads(msg.decode('utf-8')) for msg in conversation]
-                new_message = {
-                    "role": "user",
-                    "content": message.content
-                }
-                conversation.append(new_message)
+            # Récupérer la conversation depuis Redis
+            conversation = redis_client.lrange(f"thread:{thread.id}", 0, -1)
+            conversation = [json.loads(msg.decode('utf-8')) for msg in conversation]
+            new_message = {
+                "role": "user",
+                "content": f"{message.author.name}: {message.content}"
+            }
+            conversation.append(new_message)
 
-                # Limiter la conversation aux N derniers messages ou tokens
-                conversation = limit_conversation(conversation, max_tokens=4096)
+            # Limiter la conversation aux N derniers messages ou tokens
+            conversation = limit_conversation(conversation, max_tokens=4096)
 
-                # Formatage des messages pour l'API d'OpenAI
-                formatted_messages = []
-                for msg in conversation:
-                    formatted_message = {"role": msg["role"], "content": msg["content"]}
-                    formatted_messages.append(formatted_message)
-
-                # Appel à OpenAI pour obtenir une réponse
-                response = client.chat.completions.create(
-                    model="gpt-4o",
-                    messages=formatted_messages,
-                    max_tokens=4096
-                )
-
-                # Envoyer la réponse du modèle
-                bot_response = response.choices[0].message.content
-                await send_large_message(message, bot_response)  # Utilisation de la nouvelle fonction pour gérer les grands messages
-
-                # Ajouter la réponse du bot à la conversation avec le rôle 'assistant'
-                bot_message = {
-                    "role": "assistant",
-                    "content": bot_response
-                }
-                conversation.append(bot_message)
-
-                # Sérialiser et mettre à jour la conversation dans Redis
+            # Vérifier si le message répond à un message du bot ou si c'est l'auteur du thread qui écrit
+            if message.reference and message.reference.message_id:
+                referenced_message = await message.channel.fetch_message(message.reference.message_id)
+                if referenced_message.author == self.bot.user:
+                    # Le message répond à un message du bot, traiter la réponse
+                    pass
+                else:
+                    # Indexer seulement la conversation si le message ne répond pas à un message du bot
+                    redis_client.rpush(f"thread:{thread.id}", json.dumps(new_message))
+                    return
+            elif message.author.id != thread.owner_id:
+                # Si l'auteur du message n'est pas l'auteur du thread, indexer seulement la conversation
                 redis_client.rpush(f"thread:{thread.id}", json.dumps(new_message))
-                redis_client.rpush(f"thread:{thread.id}", json.dumps(bot_message))
+                return
 
-    @commands.command()
-    async def index_thread(self, ctx, thread_id: int):
-        thread = await self.bot.fetch_channel(thread_id)
+            # Formatage des messages pour l'API d'OpenAI
+            formatted_messages = []
+            for msg in conversation:
+                formatted_message = {"role": msg["role"], "content": msg["content"]}
+                formatted_messages.append(formatted_message)
+
+            # Appel à OpenAI pour obtenir une réponse
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=formatted_messages,
+                max_tokens=4096
+            )
+
+            # Envoyer la réponse du modèle
+            bot_response = response.choices[0].message.content
+            await send_large_message(message, bot_response)  # Utilisation de la nouvelle fonction pour gérer les grands messages
+
+            # Ajouter la réponse du bot à la conversation avec le rôle 'assistant'
+            bot_message = {
+                "role": "assistant",
+                "content": bot_response
+            }
+            conversation.append(bot_message)
+
+            # Sérialiser et mettre à jour la conversation dans Redis
+            redis_client.rpush(f"thread:{thread.id}", json.dumps(new_message))
+            redis_client.rpush(f"thread:{thread.id}", json.dumps(bot_message))
+
+    @nextcord.slash_command(name="index", description="Force l'indexation du thread actuel dans Redis.")
+    async def index_thread(self, interaction: nextcord.Interaction):
+        thread = interaction.channel
+        if not isinstance(thread, nextcord.Thread) or thread.parent_id not in auto_reply_forum_ids:
+            await interaction.response.send_message("Cette commande ne peut être utilisée que dans un thread autorisé.", ephemeral=True)
+            return
+
         messages = await thread.history(limit=None).flatten()
         total = len(messages)
-        count = 0
 
-        temp_message = await ctx.send("Indexation en cours... 0%")
+        # Supprimer les données existantes pour ce thread dans Redis
+        redis_client.delete(f"thread:{thread.id}")
+
+        temp_message = await interaction.response.send_message("Indexation en cours... 0%", ephemeral=True)
+        count = 0
         for message in messages:
             # Indexer chaque message dans Redis
-            redis_client.rpush(f"thread:{thread_id}", json.dumps({"role": "user", "content": message.content}))
+            redis_client.rpush(f"thread:{thread.id}", json.dumps({"role": "user", "content": f"{message.author.name}: {message.content}"}))
             count += 1
             if count % 10 == 0:
                 percentage = (count / total) * 100
                 await temp_message.edit(content=f"Indexation en cours... {percentage:.1f}%")
 
         await temp_message.edit(content="Indexation terminée.")
+
+    @nextcord.slash_command(name="unindex", description="Supprime l'indexation du thread actuel dans Redis.")
+    async def unindex_thread(self, interaction: nextcord.Interaction):
+        thread = interaction.channel
+        if not isinstance(thread, nextcord.Thread) or thread.parent_id not in auto_reply_forum_ids:
+            await interaction.response.send_message("Cette commande ne peut être utilisée que dans un thread autorisé.", ephemeral=True)
+            return
+
+        # Supprimer les données existantes pour ce thread dans Redis
+        redis_client.delete(f"thread:{thread.id}")
+        await interaction.response.send_message("Indexation supprimée avec succès.", ephemeral=True)
 
 async def send_large_message(message, content, max_length=2000):
     if len(content) <= max_length:
@@ -277,12 +308,12 @@ async def send_large_message(message, content, max_length=2000):
         current_part = ""
         for line in lines:
             if len(current_part) + len(line) + 1 > max_length:
-                await message.reply(current_part, mention_author=False)
+                await message.reply(current_part.strip(), mention_author=False)
                 current_part = line + "\n"
             else:
                 current_part += line + "\n"
         if current_part:
-            await message.reply(current_part, mention_author=False)
+            await message.reply(current_part.strip(), mention_author=False)
 
 def limit_conversation(conversation, max_tokens=4096):
     total_tokens = 0
