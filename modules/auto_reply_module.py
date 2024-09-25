@@ -62,17 +62,8 @@ class AutoReply(commands.Cog):
             return  # Arrêt de la fonction si le tag "No GPT" est présent
 
         # Vérifier si le tag 'GPT-Helper' est présent
-        if "GPT-Helper" in tags:
-            # Ajout du contexte système pour GPT-Helper
-            system_message = {
-                "role": "system",
-                "content": "Tu es un expert en informatique nommé iBot-GPT. Si tu reçois une question qui ne concerne pas ce domaine, n'hésite pas à rappeler à l'utilisateur que ce serveur est axé sur l'informatique. Assure-toi toujours de t'adresser en tutoyant l'utilisateur. Pour améliorer la lisibilité, utilise le markdown compatible embed discord."
-            }
-            # Ajouter ce message dans Redis au début de la conversation du thread
-            redis_client.lpush(f"thread:{thread.id}", json.dumps(system_message))
-            # Continuer avec les autres actions spécifiques pour 'GPT-Helper'
-            pass
-        else:
+        if "GPT-Helper" not in tags:
+            # Si 'GPT-Helper' n'est pas présent, exécuter le comportement par défaut
             # Actions par défaut si 'GPT-Helper' n'est pas présent
             # Sélection du modèle basé sur les tags
             model = "gpt-4o"  # Modèle par défaut
@@ -101,6 +92,8 @@ class AutoReply(commands.Cog):
             base_message = messages[0]
             user_name = base_message.author.name
             base_content = f"{user_name}: {base_message.content}"  # Modification ici
+            thread_title_context = f"Titre du thread: {thread.name}\n"
+            base_content = thread_title_context + base_content
             logger.info(f"Thread créé par {user_name} (ID: {base_message.author.id}) dans le forum (ID: {thread.parent_id})")
 
             image_urls = [attachment.url for attachment in base_message.attachments if any(attachment.url.endswith(ext) for ext in SUPPORTED_IMAGE_FORMATS)]
@@ -201,6 +194,14 @@ class AutoReply(commands.Cog):
                     await thread.send(embed=embed)
 
                 logger.info(f"Réponse envoyée dans le thread: {thread.name} (ID: {thread.id})")
+        else:
+            # Ajout du contexte système pour GPT-Helper
+            system_message = {
+                "role": "system",
+                "content": "Tu es un expert en informatique nommé iBot-GPT. Si tu reçois une question qui ne concerne pas ce domaine, n'hésite pas à rappeler à l'utilisateur que ce serveur est axé sur l'informatique. Assure-toi toujours de t'adresser en tutoyant l'utilisateur. Pour améliorer la lisibilité, utilise le markdown compatible embed discord."
+            }
+            # Ajouter ce message dans Redis au début de la conversation du thread
+            redis_client.lpush(f"thread:{thread.id}", json.dumps(system_message))
 
     @commands.Cog.listener()
     async def on_message(self, message: nextcord.Message):
@@ -209,6 +210,10 @@ class AutoReply(commands.Cog):
 
         thread = message.channel
         if isinstance(thread, nextcord.Thread) and thread.parent_id in auto_reply_forum_ids:
+            tags = [tag.name for tag in thread.applied_tags]
+            if "GPT-Helper" not in tags:
+                return  # Arrêter l'exécution si le tag 'GPT-Helper' n'est pas présent
+
             # Récupérer la conversation depuis Redis
             conversation = redis_client.lrange(f"thread:{thread.id}", 0, -1)
             conversation = [json.loads(msg.decode('utf-8')) for msg in conversation]
@@ -264,31 +269,31 @@ class AutoReply(commands.Cog):
             redis_client.rpush(f"thread:{thread.id}", json.dumps(new_message))
             redis_client.rpush(f"thread:{thread.id}", json.dumps(bot_message))
 
-    @nextcord.slash_command(name="index", description="Force l'indexation du thread actuel dans Redis.")
-    async def index_thread(self, interaction: nextcord.Interaction):
-        thread = interaction.channel
-        if not isinstance(thread, nextcord.Thread) or thread.parent_id not in auto_reply_forum_ids:
-            await interaction.response.send_message("Cette commande ne peut être utilisée que dans un thread autorisé.", ephemeral=True)
-            return
+    # @nextcord.slash_command(name="index", description="Force l'indexation du thread actuel dans Redis.")
+    # async def index_thread(self, interaction: nextcord.Interaction):
+    #     thread = interaction.channel
+    #     if not isinstance(thread, nextcord.Thread) or thread.parent_id not in auto_reply_forum_ids:
+    #         await interaction.response.send_message("Cette commande ne peut être utilisée que dans un thread autorisé.", ephemeral=True)
+    #         return
 
-        messages = await thread.history(limit=None).flatten()
-        total = len(messages)
+    #     messages = await thread.history(limit=None).flatten()
+    #     total = len(messages)
 
-        # Supprimer les données existantes pour ce thread dans Redis
-        redis_client.delete(f"thread:{thread.id}")
+    #     # Supprimer les données existantes pour ce thread dans Redis
+    #     redis_client.delete(f"thread:{thread.id}")
 
-        temp_message = await interaction.response.send_message("Indexation en cours... 0%", ephemeral=True)
-        count = 0
-        for message in messages:
-            # Indexer chaque message dans Redis avec timestamp
-            timestamp = message.created_at.strftime('%Y-%m-%d %H:%M:%S')
-            redis_client.rpush(f"thread:{thread.id}", json.dumps({"role": "user", "content": f"{message.author.name} [{timestamp}]: {message.content}"}))
-            count += 1
-            if count % 10 == 0:
-                percentage = (count / total) * 100
-                await temp_message.edit(content=f"Indexation en cours... {percentage:.1f}%")
+    #     temp_message = await interaction.response.send_message("Indexation en cours... 0%", ephemeral=True)
+    #     count = 0
+    #     for message in messages:
+    #         # Indexer chaque message dans Redis avec timestamp
+    #         timestamp = message.created_at.strftime('%Y-%m-%d %H:%M:%S')
+    #         redis_client.rpush(f"thread:{thread.id}", json.dumps({"role": "user", "content": f"{message.author.name} [{timestamp}]: {message.content}"}))
+    #         count += 1
+    #         if count % 10 == 0:
+    #             percentage = (count / total) * 100
+    #             await temp_message.edit(content=f"Indexation en cours... {percentage:.1f}%")
 
-        await temp_message.edit(content="Indexation terminée.")
+    #     await temp_message.edit(content="Indexation terminée.")
 
     @nextcord.slash_command(name="unindex", description="Supprime l'indexation du thread actuel dans Redis.")
     async def unindex_thread(self, interaction: nextcord.Interaction):
