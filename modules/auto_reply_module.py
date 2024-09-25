@@ -271,7 +271,7 @@ class AutoReply(commands.Cog):
             await interaction.response.send_message("Cette commande ne peut être utilisée que dans un thread autorisé.", ephemeral=True)
             return
 
-        messages = await thread.history(limit=None, oldest_first=True).flatten()  # Ajout de oldest_first=True
+        messages = await thread.history(limit=None).flatten()
         total = len(messages)
 
         # Supprimer les données existantes pour ce thread dans Redis
@@ -305,7 +305,7 @@ class AutoReply(commands.Cog):
     async def debug_redis(self, interaction: nextcord.Interaction, count: int = 10):
         thread = interaction.channel
         if not isinstance(thread, nextcord.Thread) or thread.parent_id not in auto_reply_forum_ids:
-            await interaction.response.send_message("Cette commande ne peut être utilisée que dans un thread autorisé.", ephemeral=False)
+            await interaction.response.send_message("Cette commande ne peut être utilisée que dans un thread autorisé.", ephemeral=True)
             return
 
         # Récupérer les messages depuis Redis
@@ -315,40 +315,23 @@ class AutoReply(commands.Cog):
         # Préparer le contenu de la réponse
         response_content = "\n".join(messages) if messages else "Aucun message indexé trouvé."
 
-        # Utiliser send_large_message pour envoyer la réponse
-        await send_large_message(interaction, response_content, max_length=2000)
+        # Envoyer la réponse
+        await interaction.response.send_message(f"Contenu brut des messages indexés :\n{response_content}", ephemeral=True)
 
-async def send_large_message(interaction, content, max_length=2000):
+async def send_large_message(message, content, max_length=2000):
     if len(content) <= max_length:
-        try:
-            await interaction.response.send_message(content, ephemeral=True)
-        except nextcord.errors.NotFound:
-            await interaction.followup.send("Erreur: Webhook inconnu ou invalide.", ephemeral=True)
+        await message.reply(content, mention_author=False)
     else:
         lines = content.split('\n')
         current_part = ""
         for line in lines:
             if len(current_part) + len(line) + 1 > max_length:
-                try:
-                    await interaction.followup.send(current_part.strip(), ephemeral=True)
-                except nextcord.errors.NotFound:
-                    try:
-                        await interaction.response.send_message("Erreur: Webhook inconnu ou invalide.", ephemeral=True)
-                    except nextcord.errors.NotFound:
-                        # Si l'interaction n'est plus valide, on arrête le traitement
-                        return
+                await message.reply(current_part.strip(), mention_author=False)
                 current_part = line + "\n"
             else:
                 current_part += line + "\n"
         if current_part:
-            try:
-                await interaction.followup.send(current_part.strip(), ephemeral=True)
-            except nextcord.errors.NotFound:
-                try:
-                    await interaction.response.send_message("Erreur: Webhook inconnu ou invalide.", ephemeral=True)
-                except nextcord.errors.NotFound:
-                    # Si l'interaction n'est plus valide, on arrête le traitement
-                    return
+            await message.reply(current_part.strip(), mention_author=False)
 
 def limit_conversation(conversation, max_tokens=4096):
     total_tokens = 0
