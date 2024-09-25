@@ -280,8 +280,9 @@ class AutoReply(commands.Cog):
         temp_message = await interaction.response.send_message("Indexation en cours... 0%", ephemeral=True)
         count = 0
         for message in messages:
-            # Indexer chaque message dans Redis
-            redis_client.rpush(f"thread:{thread.id}", json.dumps({"role": "user", "content": f"{message.author.name}: {message.content}"}))
+            # Indexer chaque message dans Redis avec timestamp
+            timestamp = message.created_at.strftime('%Y-%m-%d %H:%M:%S')
+            redis_client.rpush(f"thread:{thread.id}", json.dumps({"role": "user", "content": f"{message.author.name} [{timestamp}]: {message.content}"}))
             count += 1
             if count % 10 == 0:
                 percentage = (count / total) * 100
@@ -299,6 +300,23 @@ class AutoReply(commands.Cog):
         # Supprimer les données existantes pour ce thread dans Redis
         redis_client.delete(f"thread:{thread.id}")
         await interaction.response.send_message("Indexation supprimée avec succès.", ephemeral=True)
+
+    @nextcord.slash_command(name="debug_redis", description="Affiche le contenu brut des messages indexés dans Redis pour ce thread.")
+    async def debug_redis(self, interaction: nextcord.Interaction, count: int = 10):
+        thread = interaction.channel
+        if not isinstance(thread, nextcord.Thread) or thread.parent_id not in auto_reply_forum_ids:
+            await interaction.response.send_message("Cette commande ne peut être utilisée que dans un thread autorisé.", ephemeral=True)
+            return
+
+        # Récupérer les messages depuis Redis
+        messages = redis_client.lrange(f"thread:{thread.id}", 0, count - 1)
+        messages = [msg.decode('utf-8') for msg in messages]
+
+        # Préparer le contenu de la réponse
+        response_content = "\n".join(messages) if messages else "Aucun message indexé trouvé."
+
+        # Envoyer la réponse
+        await interaction.response.send_message(f"Contenu brut des messages indexés :\n{response_content}", ephemeral=True)
 
 async def send_large_message(message, content, max_length=2000):
     if len(content) <= max_length:
