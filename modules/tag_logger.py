@@ -32,8 +32,8 @@ class TagLogger(commands.Cog):
 
         await asyncio.sleep(2)  # Ajouter un délai de 2 secondes pour s'assurer que le message initial est disponible
 
-        # Récupération du premier message du thread
-        messages = await thread.history(limit=1).flatten()
+        # Récupération du premier message du thread (Nextcord v3: utiliser l'itération async)
+        messages = [m async for m in thread.history(limit=1, oldest_first=True)]
         if not messages:
             logger.warning(f"Aucun message trouvé dans le thread: {thread.name} (ID: {thread.id})")
             return

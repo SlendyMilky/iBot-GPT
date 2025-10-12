@@ -62,11 +62,13 @@ class AskGpt(commands.Cog):
         user_message = {"role": "user", "content": question}
 
         try:
-            response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[system_message, user_message],
-                max_tokens=1500
-            )
+            # Afficher l'indicateur de saisie tant que la réponse est générée
+            async with channel.typing():
+                response = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[system_message, user_message],
+                    max_tokens=1500
+                )
 
             answer = response.choices[0].message.content
             total_tokens = response.usage.total_tokens

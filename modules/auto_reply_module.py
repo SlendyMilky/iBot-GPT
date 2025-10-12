@@ -83,8 +83,8 @@ class AutoReply(commands.Cog):
             
             await asyncio.sleep(2)  # Ajouter un délai de 2 secondes pour s'assurer que le message initial est disponible
 
-            # Récupération du premier message du thread
-            messages = await thread.history(limit=1).flatten()
+            # Récupération du premier message du thread (Nextcord v3: utiliser l'itération async)
+            messages = [m async for m in thread.history(limit=1, oldest_first=True)]
             if not messages:
                 logger.warning(f"Aucun message trouvé dans le thread: {thread.name} (ID: {thread.id})")
                 return
@@ -247,12 +247,13 @@ class AutoReply(commands.Cog):
                 formatted_message = {"role": msg["role"], "content": msg["content"]}
                 formatted_messages.append(formatted_message)
 
-            # Appel à OpenAI pour obtenir une réponse
-            response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=formatted_messages,
-                max_tokens=4096
-            )
+            # Appel à OpenAI avec indicateur de saisie
+            async with thread.typing():
+                response = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=formatted_messages,
+                    max_tokens=4096
+                )
 
             # Envoyer la réponse du modèle
             bot_response = response.choices[0].message.content
