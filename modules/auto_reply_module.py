@@ -2,40 +2,69 @@ import nextcord
 from nextcord.ext import commands
 from nextcord import Embed
 import os
-from openai import OpenAI
+import time
+from openai import AsyncOpenAI
 import datetime
 import logging
 import asyncio
-import redis
 import json
 
-# Configuration du logger
 logger = logging.getLogger('bot.auto_reply_module')
-# logging.basicConfig(level=logging.DEBUG)
 
-# Assurez-vous que la clé API est définie
 api_key = os.getenv('OPENAI_API_KEY')
 if not api_key:
     logger.error("La clé API 'OPENAI_API_KEY' n'est pas définie dans les variables d'environnement.")
     raise EnvironmentError("La clé API 'OPENAI_API_KEY' doit être définie.")
 
-# Initialiser le client OpenAI
-try:
-    client = OpenAI(api_key=api_key)
-except Exception as e:
-    logger.error(f"Erreur lors de l'initialisation du client OpenAI: {e}")
-    raise
+client = AsyncOpenAI(api_key=api_key)
 
-# Configuration de Redis
-redis_host = os.getenv('REDIS_HOST')
-redis_port = os.getenv('REDIS_PORT', 6379)  # Port par défaut de Redis
-redis_client = redis.Redis(host=redis_host, port=redis_port)
+REDIS_ENABLED = os.getenv('REDIS_ENABLED', 'true').lower() == 'true'
 
-# Variables d'environnement pour la configuration
+if REDIS_ENABLED:
+    import redis.asyncio as aioredis
+    _redis_client = aioredis.Redis(
+        host=os.getenv('REDIS_HOST', 'localhost'),
+        port=int(os.getenv('REDIS_PORT', 6379)),
+    )
+    logger.info("Stockage Redis activé.")
+else:
+    _redis_client = None
+    logger.warning("Redis désactivé (REDIS_ENABLED=false). Le mode GPT-Helper utilisera un stockage en mémoire (non persistant).")
+
+# In-memory fallback store when Redis is disabled: key -> list of JSON strings
+_memory_store: dict[str, list[str]] = {}
+
+
+async def storage_rpush(key: str, value: str) -> None:
+    if _redis_client:
+        await _redis_client.rpush(key, value)
+    else:
+        _memory_store.setdefault(key, []).append(value)
+
+
+async def storage_lrange(key: str, start: int, end: int) -> list[bytes]:
+    if _redis_client:
+        return await _redis_client.lrange(key, start, end)
+    items = _memory_store.get(key, [])
+    if end == -1:
+        end = len(items)
+    return [item.encode('utf-8') for item in items[start:end + 1 if end != len(items) else end]]
+
+
+async def storage_delete(key: str) -> None:
+    if _redis_client:
+        await _redis_client.delete(key)
+    else:
+        _memory_store.pop(key, None)
+
+
+async def storage_expire(key: str, ttl: int) -> None:
+    if _redis_client:
+        await _redis_client.expire(key, ttl)
+
 auto_reply_forum_ids_str = os.getenv('AUTO_REPLY_FORUM_IDS', '')
 enable_detailed_logs = os.getenv('ENABLE_DETAILED_LOGS', 'false').lower() == 'true'
 
-# Liste des forums autorisés via les ID de salon spécifiés dans une variable d'environnement
 if auto_reply_forum_ids_str:
     try:
         auto_reply_forum_ids = list(map(int, auto_reply_forum_ids_str.split(',')))
@@ -46,8 +75,126 @@ else:
     auto_reply_forum_ids = []
     logger.warning("La variable d'environnement 'AUTO_REPLY_FORUM_IDS' est vide ou non définie.")
 
-# Formats d'image supportés
 SUPPORTED_IMAGE_FORMATS = ["png", "jpeg", "jpg", "gif", "webp"]
+
+# Model configuration: model name -> (cost_per_input_token, cost_per_output_token)
+MODEL_CONFIG = {
+    "gpt-4o-mini":  (0.00000015, 0.0000006),   # $0.15 / $0.60 per 1M
+    "gpt-4.1-mini": (0.0000004,  0.0000016),    # $0.40 / $1.60 per 1M
+    "gpt-5":        (0.00000125, 0.00001),       # $1.25 / $10.00 per 1M
+    "gpt-4o":       (0.0000025,  0.00001),       # $2.50 / $10.00 per 1M
+}
+
+TAG_TO_MODEL = {
+    "gpt-4.1-mini": "gpt-4.1-mini",
+    "gpt-5":        "gpt-5",
+    "gpt-4o":       "gpt-4o",
+}
+
+DEFAULT_MODEL = "gpt-4o-mini"
+REDIS_TTL = 30 * 24 * 3600  # 30 jours
+
+
+def select_model(tags: list[str]) -> str:
+    for tag, model in TAG_TO_MODEL.items():
+        if tag in tags:
+            return model
+    return DEFAULT_MODEL
+
+
+def split_text(text: str, max_length: int = 4000) -> list[str]:
+    if len(text) <= max_length:
+        return [text]
+    lines = text.split('\n')
+    parts = []
+    current_part = ""
+    for line in lines:
+        if len(current_part) + len(line) + 1 > max_length:
+            parts.append(current_part.rstrip())
+            current_part = line + "\n"
+        else:
+            current_part += line + "\n"
+    if current_part:
+        parts.append(current_part.rstrip())
+    return parts
+
+
+_NO_PING = nextcord.AllowedMentions.none()
+
+
+async def _stream_to_embed(
+    sent_msg: nextcord.Message,
+    embed: Embed,
+    stream,
+    update_interval: float = 1.0,
+) -> tuple[str, object]:
+    """Stream API chunks into a Discord embed, editing it at most once per second."""
+    full_content = ""
+    usage_data = None
+    last_edit = time.monotonic()
+
+    async for chunk in stream:
+        if chunk.choices and chunk.choices[0].delta.content:
+            full_content += chunk.choices[0].delta.content
+            now = time.monotonic()
+            if now - last_edit >= update_interval:
+                embed.description = full_content[:4090] + " ▌"
+                try:
+                    await sent_msg.edit(embed=embed, allowed_mentions=_NO_PING)
+                    last_edit = now
+                except Exception:
+                    pass
+        if getattr(chunk, 'usage', None):
+            usage_data = chunk.usage
+
+    return full_content, usage_data
+
+
+async def _stream_to_plain(
+    sent_msg: nextcord.Message,
+    stream,
+    update_interval: float = 1.0,
+) -> tuple[str, object]:
+    """Stream API chunks into a plain Discord message, editing it at most once per second."""
+    full_content = ""
+    usage_data = None
+    last_edit = time.monotonic()
+
+    async for chunk in stream:
+        if chunk.choices and chunk.choices[0].delta.content:
+            full_content += chunk.choices[0].delta.content
+            now = time.monotonic()
+            if now - last_edit >= update_interval:
+                display = full_content[:1990] + " ▌"
+                try:
+                    await sent_msg.edit(content=display, allowed_mentions=_NO_PING)
+                    last_edit = now
+                except Exception:
+                    pass
+        if getattr(chunk, 'usage', None):
+            usage_data = chunk.usage
+
+    return full_content, usage_data
+
+
+def limit_conversation(conversation: list[dict], max_tokens: int = 4096) -> list[dict]:
+    system_messages = [msg for msg in conversation if msg["role"] == "system"]
+    non_system = [msg for msg in conversation if msg["role"] != "system"]
+
+    # Rough token estimate: words * 1.3
+    system_tokens = sum(len(msg["content"].split()) * 1.3 for msg in system_messages)
+    total_tokens = system_tokens
+    limited = []
+
+    for msg in reversed(non_system):
+        msg_tokens = len(msg["content"].split()) * 1.3
+        if total_tokens + msg_tokens > max_tokens:
+            break
+        limited.append(msg)
+        total_tokens += msg_tokens
+
+    return system_messages + list(reversed(limited))
+
 
 class AutoReply(commands.Cog):
     def __init__(self, bot):
@@ -55,35 +202,21 @@ class AutoReply(commands.Cog):
 
     @commands.Cog.listener()
     async def on_thread_create(self, thread: nextcord.Thread):
-        # Vérification des tags du thread en utilisant 'applied_tags'
         tags = [tag.name for tag in thread.applied_tags]
+
         if "No GPT" in tags:
             logger.info(f"Tag 'No GPT' détecté dans le thread: {thread.name} (ID: {thread.id}). Aucune action n'est effectuée.")
-            return  # Arrêt de la fonction si le tag "No GPT" est présent
+            return
 
-        # Vérifier si le tag 'GPT-Helper' est présent
         if "GPT-Helper" not in tags:
-            # Si 'GPT-Helper' n'est pas présent, exécuter le comportement par défaut
-            # Actions par défaut si 'GPT-Helper' n'est pas présent
-            # Sélection du modèle basé sur les tags
-            model = "gpt-4o"  # Modèle par défaut
-            model_cost_input = 0.000005  # Coût par token d'entrée pour gpt-4o
-            model_cost_output = 0.000015  # Coût par token de sortie pour gpt-4o
-            if "gpt-3.5" in tags:
-                model = "gpt-3.5-turbo"  # Modèle moins cher si le tag est présent
-                model_cost_input = 0.000003  # Coût par token d'entrée pour gpt-3.5-turbo
-                model_cost_output = 0.000006  # Coût par token de sortie pour gpt-3.5-turbo
-            elif "gpt-4-turbo" in tags:
-                model = "gpt-4-turbo"
-                model_cost_input = 0.00001  # Coût par token d'entrée pour gpt-4-turbo
-                model_cost_output = 0.00003  # Coût par token de sortie pour gpt-4-turbo
-
             if thread.parent_id not in auto_reply_forum_ids:
                 return
-            
-            await asyncio.sleep(2)  # Ajouter un délai de 2 secondes pour s'assurer que le message initial est disponible
 
-            # Récupération du premier message du thread (Nextcord v3: utiliser l'itération async)
+            model = select_model(tags)
+            cost_input, cost_output = MODEL_CONFIG[model]
+
+            await asyncio.sleep(2)
+
             messages = [m async for m in thread.history(limit=1, oldest_first=True)]
             if not messages:
                 logger.warning(f"Aucun message trouvé dans le thread: {thread.name} (ID: {thread.id})")
@@ -91,210 +224,185 @@ class AutoReply(commands.Cog):
 
             base_message = messages[0]
             user_name = base_message.author.name
-            base_content = f"{user_name}: {base_message.content}"  # Modification ici
-            thread_title_context = f"Titre du thread: {thread.name}\n"
-            base_content = thread_title_context + base_content
+            base_content = f"Titre du thread: {thread.name}\n{user_name}: {base_message.content}"
             logger.info(f"Thread créé par {user_name} (ID: {base_message.author.id}) dans le forum (ID: {thread.parent_id})")
 
-            image_urls = [attachment.url for attachment in base_message.attachments if any(attachment.url.endswith(ext) for ext in SUPPORTED_IMAGE_FORMATS)]
-
-            # Analyse des images et ajout du contexte au message
             descriptions = {}
             image_cost = 0
 
-            for attachment in base_message.attachments:
-                file_extension = attachment.filename.split('.')[-1].lower()
-                if file_extension in SUPPORTED_IMAGE_FORMATS:
-                    try:
-                        # Estimation de la taille et du coût des images
-                        image_size = attachment.size
-                        if image_size > 512 * 512:
-                            image_cost += 0.002125  # Coût pour images plus grandes que 512x512
-                        else:
-                            image_cost += 0.001275  # Coût pour images jusqu'à 512x512
+            try:
+                # Analyse des images avec indicateur de saisie
+                if base_message.attachments:
+                    async with thread.typing():
+                        for attachment in base_message.attachments:
+                            file_extension = attachment.filename.split('.')[-1].lower()
+                            if file_extension in SUPPORTED_IMAGE_FORMATS:
+                                try:
+                                    img_response = await client.chat.completions.create(
+                                        model="gpt-4o-mini",
+                                        messages=[
+                                            {
+                                                "role": "user",
+                                                "content": [
+                                                    {"type": "text", "text": "Décris cette image du point de vue d'une aide informatique."},
+                                                    {"type": "image_url", "image_url": {"url": attachment.url}},
+                                                ],
+                                            }
+                                        ],
+                                        max_completion_tokens=500,
+                                    )
+                                    descriptions[attachment.url] = img_response.choices[0].message.content
+                                    image_cost += (
+                                        img_response.usage.prompt_tokens * 0.00000015
+                                        + img_response.usage.completion_tokens * 0.0000006
+                                    )
+                                except Exception as e:
+                                    logger.error(f"Erreur lors de la description de l'image: {e}", exc_info=True)
+                                    descriptions[attachment.url] = "Description non disponible."
+                            else:
+                                descriptions[attachment.url] = f"[Fichier non supporté: {attachment.filename}]"
+                            await asyncio.sleep(1)
 
-                        response = client.chat.completions.create(
-                            model="gpt-4o",
-                            messages=[
-                                {
-                                    "role": "user",
-                                    "content": [
-                                        {"type": "text", "text": "Décris cette image du point de vue d'une aide informatique."},
-                                        {"type": "image_url", "image_url": {"url": attachment.url}},
-                                    ],
-                                }
-                            ],
-                            max_tokens=500,
-                        )
-                        description = response.choices[0].message.content
-                        descriptions[attachment.url] = description
-                    except Exception as e:
-                        logger.error(f"Erreur lors de l'appel à l'API d'OpenAI pour la description de l'image: {e}", exc_info=True)
-                        descriptions[attachment.url] = "Description non disponible."
-                else:
-                    descriptions[attachment.url] = f"[Fichier non supporté: {attachment.filename}]"
+                if descriptions:
+                    image_descriptions = "\n".join(
+                        [f"URL: {url}\nDescription: {desc}" for url, desc in descriptions.items()]
+                    )
+                    base_content += f"\nDescriptions des images:\n{image_descriptions}"
 
-                await asyncio.sleep(1)  # Petite pause pour éviter les rate limits
+                openai_messages = [
+                    {"role": "system", "content": f"Date du jour : {datetime.datetime.now()}"},
+                    {"role": "system", "content": "Si la question posée te semble incorrecte ou manque de détails, n'hésite pas à demander à l'utilisateur des informations supplémentaires. Étant donné que tu as uniquement accès à son message initial, avoir le maximum d'informations sera utile pour fournir une aide optimale."},
+                    {"role": "system", "content": "Tu es un expert en informatique nommé iBot-GPT. Si tu reçois une question qui ne concerne pas ce domaine, n'hésite pas à rappeler à l'utilisateur que ce serveur est axé sur l'informatique. Assure-toi toujours de t'adresser en tutoyant l'utilisateur. Pour améliorer la lisibilité, utilise le markdown compatible embed discord."},
+                    {"role": "user", "content": base_content},
+                ]
 
-            # Ajout des descriptions des images au contenu de base
-            if descriptions:
-                image_descriptions = "\n".join([f"URL: {url}\nDescription: {desc}" for url, desc in descriptions.items()])
-                base_content += f"\nDescriptions des images:\n{image_descriptions}"
+                if enable_detailed_logs:
+                    logger.debug("Messages envoyés à l'API :")
+                    for msg in openai_messages:
+                        logger.debug(msg)
 
-            messages = [
-                {"role": "system", "content": f"Date du jour : {datetime.datetime.now()}"},
-                {"role": "system", "content": "Si la question posée te semble incorrecte ou manque de détails, n'hésite pas à demander à l'utilisateur des informations supplémentaires. Étant donné que tu as uniquement accès à son message initial, avoir le maximum d'informations sera utile pour fournir une aide optimale."},
-                {"role": "system", "content": "Tu es un expert en informatique nommé iBot-GPT. Si tu reçois une question qui ne concerne pas ce domaine, n'hésite pas à rappeler à l'utilisateur que ce serveur est axé sur l'informatique. Assure-toi toujours de t'adresser en tutoyant l'utilisateur. Pour améliorer la lisibilité, utilise le markdown compatible embed discord."},
-                {"role": "user", "content": base_content},
-            ]
+                # Envoi de l'embed initial pour le streaming
+                streaming_embed = Embed(title="Réponse à la question", description="⏳ Génération en cours...", color=0x454FBF)
+                sent_msg = await thread.send(embed=streaming_embed)
 
-            if enable_detailed_logs:
-                logger.debug("Messages envoyés à ChatGPT :")
-                for message in messages:
-                    logger.debug(message)
-
-            async with thread.typing():
-                response = client.chat.completions.create(
-                    model=model,  # Utilisation du modèle sélectionné
-                    messages=messages
+                stream = await client.chat.completions.create(
+                    model=model,
+                    messages=openai_messages,
+                    stream=True,
+                    stream_options={"include_usage": True},
                 )
 
-                embed_content = response.choices[0].message.content.strip()
-                total_input_tokens = response.usage.total_tokens
-                
-                # Correction du calcul des coûts
-                prompt_tokens = response.usage.prompt_tokens
-                completion_tokens = response.usage.completion_tokens
-                input_cost = prompt_tokens * model_cost_input  # coût simulant des tokens de prompt
-                output_cost = completion_tokens * model_cost_output  # coût simulant des tokens de completion
-                total_cost = input_cost + output_cost + image_cost
+                full_content, usage_data = await _stream_to_embed(sent_msg, streaming_embed, stream)
+                full_content = full_content.strip()
 
-                # Fonction pour découper un texte en morceaux de taille maximale tout en conservant les mots entiers
-                def split_text(text, max_length=4096):
-                    lines = text.split('\n')
-                    parts = []
-                    current_part = ""
+                total_tokens = usage_data.total_tokens if usage_data else 0
+                prompt_tokens = usage_data.prompt_tokens if usage_data else 0
+                completion_tokens = usage_data.completion_tokens if usage_data else 0
+                total_cost = prompt_tokens * cost_input + completion_tokens * cost_output + image_cost
 
-                    for line in lines:
-                        if len(current_part) + len(line) + 1 <= max_length:
-                            current_part += line + "\n"
-                        else:
-                            parts.append(current_part)
-                            current_part = line + "\n"
-
-                    parts.append(current_part)
-                    return parts
-
-                parts = split_text(embed_content, 4000)
-
+                # Mise à jour finale avec le contenu complet et le footer
+                parts = split_text(full_content)
                 for i, part in enumerate(parts):
-                    title = f"{'Réponse à la question' if i == 0 else f'Partie : {i+1}'}"
-                    embed = Embed(title=title, description=part, color=0x454FBF)
-                    embed.set_footer(text=f"Réponse générée par {model} le {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\nTotal Tokens: {response.usage.total_tokens} | Coût: {total_cost:.6f} USD")
-                    await thread.send(embed=embed)
+                    title = "Réponse à la question" if i == 0 else f"Partie : {i + 1}"
+                    final_embed = Embed(title=title, description=part, color=0x454FBF)
+                    final_embed.set_footer(
+                        text=f"Réponse générée par {model} le {datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n"
+                             f"Total Tokens: {total_tokens} | Coût: {total_cost:.6f} USD"
+                    )
+                    if i == 0:
+                        await sent_msg.edit(embed=final_embed, allowed_mentions=_NO_PING)
+                    else:
+                        await thread.send(embed=final_embed)
 
                 logger.info(f"Réponse envoyée dans le thread: {thread.name} (ID: {thread.id})")
+
+            except Exception as e:
+                logger.error(f"Erreur lors du traitement du thread {thread.id}: {e}", exc_info=True)
+                error_embed = Embed(
+                    title="Erreur",
+                    description="Une erreur s'est produite lors de la génération de la réponse. Merci de réessayer ou de contacter un administrateur.",
+                    color=0xFF0000,
+                )
+                await thread.send(embed=error_embed)
+
         else:
-            # Ajout du contexte système pour GPT-Helper
             system_message = {
                 "role": "system",
                 "content": "Tu es un expert en informatique nommé iBot-GPT. Si tu reçois une question qui ne concerne pas ce domaine, n'hésite pas à rappeler à l'utilisateur que ce serveur est axé sur l'informatique. Assure-toi toujours de t'adresser en tutoyant l'utilisateur. Pour améliorer la lisibilité, utilise le markdown compatible embed discord."
             }
-            # Ajouter ce message dans Redis au début de la conversation du thread
-            redis_client.lpush(f"thread:{thread.id}", json.dumps(system_message))
+            key = f"thread:{thread.id}"
+            await storage_rpush(key, json.dumps(system_message))
+            await storage_expire(key, REDIS_TTL)
 
     @commands.Cog.listener()
     async def on_message(self, message: nextcord.Message):
         if message.author == self.bot.user:
-            return  # Ignorer les messages du bot lui-même
+            return
 
         thread = message.channel
-        if isinstance(thread, nextcord.Thread) and thread.parent_id in auto_reply_forum_ids:
-            tags = [tag.name for tag in thread.applied_tags]
-            if "GPT-Helper" not in tags:
-                return  # Arrêter l'exécution si le tag 'GPT-Helper' n'est pas présent
+        if not (isinstance(thread, nextcord.Thread) and thread.parent_id in auto_reply_forum_ids):
+            return
 
-            # Récupérer la conversation depuis Redis
-            conversation = redis_client.lrange(f"thread:{thread.id}", 0, -1)
-            conversation = [json.loads(msg.decode('utf-8')) for msg in conversation]
-            new_message = {
-                "role": "user",
-                "content": f"{message.author.name}: {message.content}"
-            }
-            conversation.append(new_message)
+        tags = [tag.name for tag in thread.applied_tags]
+        if "GPT-Helper" not in tags:
+            return
 
-            # Limiter la conversation aux N derniers messages ou tokens
-            conversation = limit_conversation(conversation, max_tokens=4096)
+        key = f"thread:{thread.id}"
+        raw_conversation = await storage_lrange(key, 0, -1)
+        conversation = [json.loads(msg.decode('utf-8')) for msg in raw_conversation]
 
-            # Vérifier si le message répond à un message du bot ou si c'est l'auteur du thread qui écrit
-            if message.reference and message.reference.message_id:
-                referenced_message = await message.channel.fetch_message(message.reference.message_id)
-                if referenced_message.author == self.bot.user:
-                    # Le message répond à un message du bot, traiter la réponse
-                    pass
-                else:
-                    # Indexer seulement la conversation si le message ne répond pas à un message du bot
-                    redis_client.rpush(f"thread:{thread.id}", json.dumps(new_message))
-                    return
-            elif message.author.id != thread.owner_id:
-                # Si l'auteur du message n'est pas l'auteur du thread, indexer seulement la conversation
-                redis_client.rpush(f"thread:{thread.id}", json.dumps(new_message))
+        new_message = {
+            "role": "user",
+            "content": f"{message.author.name}: {message.content}"
+        }
+        conversation.append(new_message)
+        conversation = limit_conversation(conversation, max_tokens=4096)
+
+        if message.reference and message.reference.message_id:
+            referenced_message = await message.channel.fetch_message(message.reference.message_id)
+            if referenced_message.author != self.bot.user:
+                await storage_rpush(key, json.dumps(new_message))
+                await storage_expire(key, REDIS_TTL)
                 return
+        elif message.author.id != thread.owner_id:
+            await storage_rpush(key, json.dumps(new_message))
+            await storage_expire(key, REDIS_TTL)
+            return
 
-            # Formatage des messages pour l'API d'OpenAI
-            formatted_messages = []
-            for msg in conversation:
-                formatted_message = {"role": msg["role"], "content": msg["content"]}
-                formatted_messages.append(formatted_message)
+        model = select_model(tags)
 
-            # Appel à OpenAI avec indicateur de saisie
-            async with thread.typing():
-                response = client.chat.completions.create(
-                    model="gpt-4o",
-                    messages=formatted_messages,
-                    max_tokens=4096
-                )
+        formatted_messages = [{"role": msg["role"], "content": msg["content"]} for msg in conversation]
 
-            # Envoyer la réponse du modèle
-            bot_response = response.choices[0].message.content
-            await send_large_message(message, bot_response)  # Utilisation de la nouvelle fonction pour gérer les grands messages
+        try:
+            no_ping = nextcord.AllowedMentions.none()
+            sent_msg = await message.reply("⏳ Génération en cours...", mention_author=False, allowed_mentions=no_ping)
 
-            # Ajouter la réponse du bot à la conversation avec le rôle 'assistant'
-            bot_message = {
-                "role": "assistant",
-                "content": bot_response
-            }
-            conversation.append(bot_message)
+            stream = await client.chat.completions.create(
+                model=model,
+                messages=formatted_messages,
+                max_completion_tokens=4096,
+                stream=True,
+                stream_options={"include_usage": True},
+            )
 
-            # Sérialiser et mettre à jour la conversation dans Redis
-            redis_client.rpush(f"thread:{thread.id}", json.dumps(new_message))
-            redis_client.rpush(f"thread:{thread.id}", json.dumps(bot_message))
+            bot_response, _ = await _stream_to_plain(sent_msg, stream)
 
-    # @nextcord.slash_command(name="index", description="Force l'indexation du thread actuel dans Redis.")
-    # async def index_thread(self, interaction: nextcord.Interaction):
-    #     thread = interaction.channel
-    #     if not isinstance(thread, nextcord.Thread) or thread.parent_id not in auto_reply_forum_ids:
-    #         await interaction.response.send_message("Cette commande ne peut être utilisée que dans un thread autorisé.", ephemeral=True)
-    #         return
+            # Mise à jour finale et découpage si nécessaire
+            parts = split_text(bot_response, 2000)
+            await sent_msg.edit(content=parts[0], allowed_mentions=_NO_PING)
+            for part in parts[1:]:
+                await message.reply(part, mention_author=False, allowed_mentions=no_ping)
 
-    #     messages = await thread.history(limit=None).flatten()
-    #     total = len(messages)
+        except Exception as e:
+            logger.error(f"Erreur API lors du traitement du message dans {thread.id}: {e}", exc_info=True)
+            await message.reply("Une erreur s'est produite lors de la génération de la réponse.", mention_author=False, allowed_mentions=nextcord.AllowedMentions.none())
+            return
 
-    #     # Supprimer les données existantes pour ce thread dans Redis
-    #     redis_client.delete(f"thread:{thread.id}")
+        bot_message = {"role": "assistant", "content": bot_response}
 
-    #     temp_message = await interaction.response.send_message("Indexation en cours... 0%", ephemeral=True)
-    #     count = 0
-    #     for message in messages:
-    #         # Indexer chaque message dans Redis avec timestamp
-    #         timestamp = message.created_at.strftime('%Y-%m-%d %H:%M:%S')
-    #         redis_client.rpush(f"thread:{thread.id}", json.dumps({"role": "user", "content": f"{message.author.name} [{timestamp}]: {message.content}"}))
-    #         count += 1
-    #         if count % 10 == 0:
-    #             percentage = (count / total) * 100
-    #             await temp_message.edit(content=f"Indexation en cours... {percentage:.1f}%")
-
-    #     await temp_message.edit(content="Indexation terminée.")
+        await storage_rpush(key, json.dumps(new_message))
+        await storage_rpush(key, json.dumps(bot_message))
+        await storage_expire(key, REDIS_TTL)
 
     @nextcord.slash_command(name="unindex", description="Supprime l'indexation du thread actuel dans Redis.")
     async def unindex_thread(self, interaction: nextcord.Interaction):
@@ -303,8 +411,7 @@ class AutoReply(commands.Cog):
             await interaction.response.send_message("Cette commande ne peut être utilisée que dans un thread autorisé.", ephemeral=True)
             return
 
-        # Supprimer les données existantes pour ce thread dans Redis
-        redis_client.delete(f"thread:{thread.id}")
+        await storage_delete(f"thread:{thread.id}")
         await interaction.response.send_message("Indexation supprimée avec succès.", ephemeral=True)
 
     @nextcord.slash_command(name="debug_redis", description="Affiche le contenu brut des messages indexés dans Redis pour ce thread.")
@@ -314,41 +421,19 @@ class AutoReply(commands.Cog):
             await interaction.response.send_message("Cette commande ne peut être utilisée que dans un thread autorisé.", ephemeral=True)
             return
 
-        # Récupérer les messages depuis Redis
-        messages = redis_client.lrange(f"thread:{thread.id}", 0, count - 1)
+        messages = await storage_lrange(f"thread:{thread.id}", 0, count - 1)
         messages = [msg.decode('utf-8') for msg in messages]
 
-        # Préparer le contenu de la réponse
         response_content = "\n".join(messages) if messages else "Aucun message indexé trouvé."
-
-        # Envoyer la réponse
         await interaction.response.send_message(f"Contenu brut des messages indexés :\n{response_content}", ephemeral=True)
 
-async def send_large_message(message, content, max_length=2000):
-    if len(content) <= max_length:
-        await message.reply(content, mention_author=False)
-    else:
-        lines = content.split('\n')
-        current_part = ""
-        for line in lines:
-            if len(current_part) + len(line) + 1 > max_length:
-                await message.reply(current_part.strip(), mention_author=False)
-                current_part = line + "\n"
-            else:
-                current_part += line + "\n"
-        if current_part:
-            await message.reply(current_part.strip(), mention_author=False)
 
-def limit_conversation(conversation, max_tokens=4096):
-    total_tokens = 0
-    limited_conversation = []
-    for msg in reversed(conversation):
-        msg_tokens = len(msg["content"].split())  # Estimation simple du nombre de tokens
-        if total_tokens + msg_tokens > max_tokens:
-            break
-        limited_conversation.append(msg)
-        total_tokens += msg_tokens
-    return list(reversed(limited_conversation))
+async def send_large_message(message: nextcord.Message, content: str, max_length: int = 2000):
+    no_ping = nextcord.AllowedMentions.none()
+    parts = split_text(content, max_length)
+    for part in parts:
+        await message.reply(part, mention_author=False, allowed_mentions=no_ping)
+
 
 def setup(bot):
     bot.add_cog(AutoReply(bot))

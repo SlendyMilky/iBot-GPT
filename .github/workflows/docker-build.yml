@@ -1,0 +1,56 @@
+name: CI - Docker Build (cached)
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - ".github/workflows/**"
+      - "requirements.txt"
+      - "ibot-gpt.py"
+      - "modules/**"
+      - "VERSION"
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - ".github/workflows/**"
+      - "requirements.txt"
+      - "ibot-gpt.py"
+      - "modules/**"
+      - "VERSION"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image with layer cache (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: ibot-gpt:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+
+

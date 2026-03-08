@@ -16,9 +16,10 @@ RUN apk update && \
 
 # Install python package dependencies
 WORKDIR /iBot
-COPY . /iBot/
+COPY requirements.txt /iBot/requirements.txt
 RUN pip install python-dotenv --break-system-packages && \
     pip install -r requirements.txt --break-system-packages
+COPY . /iBot/
 
 # Run the application
 CMD ["python3", "/iBot/ibot-gpt.py"]

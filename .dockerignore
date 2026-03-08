@@ -1,0 +1,30 @@
+# Exclude VCS and CI files
+.git
+.github
+
+# Python cache/artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+
+# Environments
+.env
+*.env
+venv/
+.venv/
+
+# OS/editor junk
+.DS_Store
+*.log
+
+# Unneeded project assets for runtime
+Image/
+README.md
+LICENSE
+docker-compose.yml
+*.xcf
+
+

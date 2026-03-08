@@ -3,3 +3,4 @@ thread_log.txt
 __pycache__
 bot_log.txt
 .venv/
+.env

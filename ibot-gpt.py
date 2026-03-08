@@ -3,6 +3,10 @@ from nextcord.ext import commands
 import os
 import glob
 import logging
+from logging.handlers import RotatingFileHandler
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Bot configuration
 BOT_TOKEN = os.getenv('BOT_TOKEN')
@@ -21,7 +25,7 @@ formatter = logging.Formatter('%(asctime)s [%(name)s] %(message)s', datefmt='%d/
 stream_handler = logging.StreamHandler()
 stream_handler.setFormatter(formatter)
 
-file_handler = logging.FileHandler("bot_log.txt")
+file_handler = RotatingFileHandler("bot_log.txt", maxBytes=5 * 1024 * 1024, backupCount=3)
 file_handler.setFormatter(formatter)
 
 logger.addHandler(stream_handler)
