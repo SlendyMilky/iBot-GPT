@@ -28,8 +28,8 @@ def user(uid, roles=()):
     return SimpleNamespace(id=uid, roles=[SimpleNamespace(id=r) for r in roles])
 
 
-def route(u, feature, opus=False):
-    return asyncio.run(_claude.route(FakeBot(), None, u, feature, opus))
+def route(u, feature, tag=None):
+    return asyncio.run(_claude.route(FakeBot(), None, u, feature, tag))
 
 
 def spend(uid, usd):
@@ -69,14 +69,23 @@ def test_routing_and_budget():
     assert (route(u, 'helper').tier, route(u, 'helper').effort) == ('sonnet', 'low')
 
     # Opus : refusé sans rôle (repli sur le profil de la fonctionnalité), accordé avec le rôle
-    c = route(u, 'helper', opus=True)
+    c = route(u, 'helper', tag='opus')
     assert (c.tier, c.effort) == ('sonnet', 'low') and c.note
-    c = route(user(100, roles=[42]), 'forum', opus=True)
+    c = route(user(100, roles=[42]), 'forum', tag='opus')
     assert (c.tier, c.effort, c.note) == ('opus', 'medium', None)
+
+    # Tag Haiku : modèle forcé, effort de la fonctionnalité conservé
+    c = route(u, 'forum', tag='haiku')
+    assert (c.tier, c.effort, c.note) == ('haiku', 'medium', None)
+    c = route(u, 'helper', tag='haiku')
+    assert (c.tier, c.effort) == ('haiku', 'low')
+    assert _claude.model_tag(['Résolu', 'Opus']) == 'opus'
+    assert _claude.model_tag(['Opus', 'Haiku']) == 'haiku'
+    assert _claude.model_tag(['gpt-4o', 'GPT-Helper']) is None
 
     # 5 $ : tout passe en Haiku low, y compris Opus
     spend(100, 5.0)
-    c = route(user(100, roles=[42]), 'forum', opus=True)
+    c = route(user(100, roles=[42]), 'forum', tag='opus')
     assert (c.tier, c.effort) == ('haiku', 'low') and c.note
 
     # 8 $ : bloqué
@@ -85,7 +94,7 @@ def test_routing_and_budget():
 
     # Le créateur n'est jamais limité, et peut utiliser Opus sans rôle
     spend(1, 50.0)
-    c = route(user(1), 'forum', opus=True)
+    c = route(user(1), 'forum', tag='opus')
     assert (c.tier, c.effort) == ('opus', 'medium')
 
 
