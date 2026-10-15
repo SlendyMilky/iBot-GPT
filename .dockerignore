@@ -28,3 +28,5 @@ docker-compose.yml
 *.xcf
 
 
+data/
+tests/

@@ -32,10 +32,11 @@ logger.addHandler(stream_handler)
 logger.addHandler(file_handler)
 
 def load_modules():
-    for filename in glob.glob("./modules/*.py"):
-        if filename.endswith(".py"):
-            module_name = os.path.basename(filename)[:-3]
-            bot.load_extension(f"modules.{module_name}")
+    for filename in sorted(glob.glob("./modules/*.py")):
+        module_name = os.path.basename(filename)[:-3]
+        if module_name.startswith("_"):  # helpers partagés (_claude, _usage), pas des extensions
+            continue
+        bot.load_extension(f"modules.{module_name}")
 
 @bot.event
 async def on_ready():
