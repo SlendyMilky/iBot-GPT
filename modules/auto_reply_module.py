@@ -9,7 +9,7 @@ import json
 
 from ._claude import (
     BASE_PERSONA, NO_PING, blocked_message, finalize, friendly_error, image_blocks, is_admin,
-    normalize_history, route, should_notify, split_text, stream_reply,
+    normalize_history, model_tag, route, should_notify, split_text, stream_reply,
 )
 
 logger = logging.getLogger('bot.auto_reply_module')
@@ -118,7 +118,7 @@ class AutoReply(commands.Cog):
         author = base_message.author
         logger.info(f"Thread créé par {author.name} (ID: {author.id}) dans le forum (ID: {thread.parent_id})")
 
-        choice = await route(self.bot, thread.guild, author, 'forum', opus="Opus" in tags)
+        choice = await route(self.bot, thread.guild, author, 'forum', tag=model_tag(tags))
         if choice is None:
             if should_notify(author.id):
                 await thread.send(blocked_message(), allowed_mentions=NO_PING)
@@ -214,7 +214,7 @@ class AutoReply(commands.Cog):
             await storage_expire(key, REDIS_TTL)
             return
 
-        choice = await route(self.bot, thread.guild, message.author, 'helper', opus="Opus" in tags)
+        choice = await route(self.bot, thread.guild, message.author, 'helper', tag=model_tag(tags))
         if choice is None:
             await storage_rpush(key, json.dumps(new_message))
             await storage_expire(key, REDIS_TTL)

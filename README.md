@@ -18,6 +18,7 @@ Bot Discord d'assistance informatique propulsé par l'API Anthropic (Claude).
 | Réponse automatique du forum | Sonnet 5.5 | medium |
 | GPT-Helper (suite de conversation) | Sonnet 5.5 | low |
 | `/ask-gpt`, `/resume` | Haiku 5.5 | low |
+| Tag de forum `Haiku` | Haiku 5.5 | celui de la fonctionnalité (medium en réponse auto, low en GPT-Helper) |
 | Tag de forum `Opus` (rôles `OPUS_ROLE_IDS` uniquement) | Opus 5.5 | medium |
 
 Chaque utilisateur a un budget **mensuel** (mois calendaire) :
@@ -32,7 +33,10 @@ Le créateur du bot (propriétaire de l'application Discord) n'a aucune limite. 
 
 - `No GPT` : le bot ignore le post.
 - `GPT-Helper` : mode conversation.
+- `Haiku` : force Haiku (moins cher et plus rapide), avec l'effort habituel de la fonctionnalité.
 - `Opus` : demande Opus (repli sur Sonnet pour les membres sans rôle autorisé).
+
+Si `Haiku` et `Opus` sont posés ensemble, `Haiku` l'emporte. Les noms de tags sont sensibles à la casse.
 
 ## Prérequis 🧾
 
@@ -69,7 +73,7 @@ python ibot-gpt.py
 ```yaml
 services:
     ibot-gpt:
-        image: 'ghcr.io/slendymilky/ibot-gpt:3.0.0'
+        image: 'ghcr.io/slendymilky/ibot-gpt:3.0.1'
         container_name: ibot-gpt
         restart: always
         env_file: stack.env

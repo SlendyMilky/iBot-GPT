@@ -91,19 +91,33 @@ async def is_admin(bot, user) -> bool:
     return await bot.is_owner(user) or bool(ADMIN_ROLE_IDS & {r.id for r in getattr(user, 'roles', [])})
 
 
-async def route(bot, guild, user, feature: str, opus: bool = False) -> Choice | None:
+# Tags de forum qui forcent le modèle (nom du tag -> tier). Haiku passe avant Opus si les deux sont posés.
+MODEL_TAGS = {'Haiku': 'haiku', 'Opus': 'opus'}
+
+
+def model_tag(tag_names: list[str]) -> str | None:
+    return next((MODEL_TAGS[t] for t in MODEL_TAGS if t in tag_names), None)
+
+
+async def route(bot, guild, user, feature: str, tag: str | None = None) -> Choice | None:
     """Choisit modèle et effort pour `user`. Renvoie None si son budget du mois est épuisé.
 
+    `tag` : 'haiku' (modèle forcé, l'effort de la fonctionnalité est conservé) ou 'opus'.
     Le créateur du bot n'a aucune limite. Les autres : Opus réservé à OPUS_ROLE_IDS (repli sur le
     profil de la fonctionnalité), puis au-delà de SOFT_USD tout passe en Haiku low, au-delà de
     HARD_USD plus aucune réponse.
     """
-    if await bot.is_owner(user):
-        return Choice(*PROFILES['opus' if opus else feature])
-
     tier, effort = PROFILES[feature]
+    if tag == 'haiku':
+        tier = 'haiku'
+
+    if await bot.is_owner(user):
+        if tag == 'opus':
+            tier, effort = PROFILES['opus']
+        return Choice(tier, effort)
+
     note = None
-    if opus:
+    if tag == 'opus':
         if OPUS_ROLE_IDS & await _role_ids(guild, user):
             tier, effort = PROFILES['opus']
         else:
